@@ -9,7 +9,7 @@
 #include <nodedb.hpp>
 #include <router/router.hpp>
 #include <service/context.hpp>
-#include <util/logging/logger.h>
+#include <util/logging/logger.hpp>
 
 #include <cxxopts.hpp>
 #include <csignal>
@@ -41,10 +41,6 @@ namespace llarp
       }
     }
 
-    auto threads = config->router.m_workerThreads;
-    if (threads <= 0)
-      threads = 1;
-    worker = std::make_shared<llarp::thread::ThreadPool>(threads, 1024, "llarp-worker");
     logic = std::make_shared<Logic>();
 
     nodedb_dir = fs::path(config->router.m_dataDir / nodedb_dirname).string();
@@ -88,9 +84,11 @@ namespace llarp
     crypto = std::make_unique<sodium::CryptoLibSodium>();
     cryptoManager = std::make_unique<CryptoManager>(crypto.get());
 
-    router = std::make_unique<Router>(worker, mainloop, logic);
+    router = std::make_unique<Router>(mainloop, logic);
 
-    nodedb = std::make_unique<llarp_nodedb>(router->diskworker(), nodedb_dir);
+    nodedb = std::make_unique<llarp_nodedb>(
+        nodedb_dir,
+        [r = router.get()](std::function<void(void)> call) { r->QueueDiskIO(std::move(call)); });
 
     if (!router->Configure(config.get(), isRelay, nodedb.get()))
     {
@@ -186,15 +184,8 @@ namespace llarp
   void
   Context::Close()
   {
-    llarp::LogDebug("stop workers");
-    if (worker)
-      worker->stop();
-
     llarp::LogDebug("free config");
     config.release();
-
-    llarp::LogDebug("free workers");
-    worker.reset();
 
     llarp::LogDebug("free nodedb");
     nodedb.release();

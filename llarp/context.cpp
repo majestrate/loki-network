@@ -251,17 +251,46 @@ extern "C"
     return sizeof(llarp_config);
   }
 
-  struct llarp_config*
-  llarp_default_config()
+  static llarp_config*
+  _llarp_default_config(bool isRelay)
   {
     llarp_config* conf = new llarp_config();
+
+    try
+    {
+      if (not conf->impl.LoadDefault(isRelay, llarp::GetDefaultDataDir()))
+      {
+        delete conf;
+        return nullptr;
+      }
+    }
+    catch (std::exception&)
+    {
+      delete conf;
+      return nullptr;
+    }
+    if (not isRelay)
+    {
 #ifdef ANDROID
-    // put andrid config overrides here
+      // put andrid config overrides here
 #endif
 #ifdef IOS
-    // put IOS config overrides here
+      // put IOS config overrides here
 #endif
+    }
     return conf;
+  }
+
+  llarp_config*
+  llarp_default_client_config()
+  {
+    return _llarp_default_config(false);
+  }
+
+  llarp_config*
+  llarp_default_relay_config()
+  {
+    return _llarp_default_config(true);
   }
 
   void

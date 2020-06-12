@@ -32,9 +32,17 @@ extern "C"
   /// llarp_application config
   struct llarp_config;
 
-  /// get default config for current platform
   struct llarp_config*
-  llarp_default_config();
+  llarp_default_client_config();
+
+  struct llarp_config*
+  llarp_default_relay_config();
+
+  static llarp_config*
+  llarp_default_config()
+  {
+    return llarp_default_client_config();
+  }
 
   /// free previously allocated configuration
   void

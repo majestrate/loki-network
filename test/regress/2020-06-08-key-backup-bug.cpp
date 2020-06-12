@@ -13,6 +13,7 @@ make_context(std::optional<fs::path> keyfile)
   config->impl.network.m_endpointType = "null";
   config->impl.network.m_keyfile = keyfile;
   config->impl.bootstrap.skipBootstrap = true;
+  config->impl.api.m_enableRPCServer = false;
   auto ptr = llarp_main_init_from_config(config, false);
   llarp_config_free(config);
   return ptr;

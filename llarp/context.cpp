@@ -139,6 +139,7 @@ namespace llarp
     /// already closing
     if (closeWaiter)
       return;
+
     if (CallSafe(std::bind(&Context::HandleSignal, this, SIGTERM)))
       closeWaiter = std::make_unique<std::promise<void>>();
   }
@@ -260,12 +261,14 @@ extern "C"
     {
       if (not conf->impl.LoadDefault(isRelay, llarp::GetDefaultDataDir()))
       {
+        LogError("cannot make config, loading defaults failed");
         delete conf;
         return nullptr;
       }
     }
-    catch (std::exception&)
+    catch (std::exception& ex)
     {
+      LogError("cannot make config: ", ex.what());
       delete conf;
       return nullptr;
     }

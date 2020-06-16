@@ -62,8 +62,8 @@ TEST_CASE("key backup bug regression test", "[regress]")
             REQUIRE(endpointAddress != ep->GetIdentity().pub.Addr());
           }
         }
-        // close the router "later" so llarp_main_run exits
-        ctx->CloseAsync();
+        // close the router right away
+        ctx->router->Die();
       });
       REQUIRE(llarp_main_run(context, llarp_main_runtime_opts{}) == 0);
       llarp_main_free(context);

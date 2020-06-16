@@ -9,8 +9,9 @@
 llarp_main*
 make_context(std::optional<fs::path> keyfile)
 {
-  auto config = llarp_default_config();
+  auto config = new llarp_config();
   REQUIRE(config != nullptr);
+  REQUIRE(config->impl.LoadDefault(false, fs::current_path()));
   config->impl.network.m_endpointType = "null";
   config->impl.network.m_keyfile = keyfile;
   config->impl.bootstrap.skipBootstrap = true;

@@ -6,15 +6,17 @@
 #include <catch2/catch.hpp>
 
 /// make a llarp_main* with 1 endpoint that specifies a keyfile
-static llarp_main*
+llarp_main*
 make_context(std::optional<fs::path> keyfile)
 {
   auto config = llarp_default_config();
+  REQUIRE(config != nullptr);
   config->impl.network.m_endpointType = "null";
   config->impl.network.m_keyfile = keyfile;
   config->impl.bootstrap.skipBootstrap = true;
   config->impl.api.m_enableRPCServer = false;
   auto ptr = llarp_main_init_from_config(config, false);
+  REQUIRE(ptr != nullptr);
   llarp_config_free(config);
   return ptr;
 }

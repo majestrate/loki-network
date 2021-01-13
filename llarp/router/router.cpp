@@ -705,6 +705,12 @@ namespace llarp
     m_LastStatsReport = now;
   }
 
+  bool
+  Router::ShouldPokeRoutes() const
+  {
+    return m_Config->network.m_enableRoutePoker;
+  }
+
   void
   Router::Tick()
   {

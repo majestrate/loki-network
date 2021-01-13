@@ -98,6 +98,8 @@ namespace llarp
 
     std::vector<llarp::dns::SRVData> m_SRVRecords;
 
+    bool m_enableRoutePoker;
+
     // TODO:
     // on-up
     // on-down

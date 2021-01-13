@@ -201,13 +201,10 @@ namespace llarp::rpc
                                   reply(CreateJSONError("could not find exit"));
                                   return;
                                 }
-                                r->ForEachPeer(
-                                    [r](auto session, auto) mutable {
-                                      const auto ip = session->GetRemoteEndpoint().toIP();
-                                      r->routePoker().AddRoute(ip);
-                                    },
-                                    false);
-                                net::AddDefaultRouteViaInterface(ep->GetIfName());
+                                if (r->ShouldPokeRoutes())
+                                {
+                                  net::AddDefaultRouteViaInterface(ep->GetIfName());
+                                }
                                 reply(CreateJSONResponse("OK"));
                               },
                               5s);
@@ -248,13 +245,6 @@ namespace llarp::rpc
                       else if (not map)
                       {
                         net::DelDefaultRouteViaInterface(ep->GetIfName());
-
-                        r->ForEachPeer(
-                            [r](auto session, auto) mutable {
-                              const auto ip = session->GetRemoteEndpoint().toIP();
-                              r->routePoker().DelRoute(ip);
-                            },
-                            false);
                         ep->UnmapExitRange(range);
                       }
                       reply(CreateJSONResponse("OK"));

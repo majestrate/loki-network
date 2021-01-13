@@ -195,6 +195,12 @@ namespace llarp
     virtual bool
     LooksAlive() const = 0;
 
+    virtual bool
+    ShouldPokeRoutes() const
+    {
+      return false;
+    };
+
     /// stop running the router logic gracefully
     virtual void
     Stop() = 0;

@@ -130,9 +130,11 @@ namespace llarp
       if (not m_Enabling)  // if route was already set up
         DisableAllRoutes();
       EnableAllRoutes();
-
-      const auto ep = m_Router->hiddenServiceContext().GetDefault();
-      net::AddDefaultRouteViaInterface(ep->GetIfName());
+      if (m_Router->ShouldPokeRoutes())
+      {
+        const auto ep = m_Router->hiddenServiceContext().GetDefault();
+        net::AddDefaultRouteViaInterface(ep->GetIfName());
+      }
     }
   }
 

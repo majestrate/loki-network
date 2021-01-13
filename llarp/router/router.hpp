@@ -172,6 +172,9 @@ namespace llarp
       return _vpnPlatform.get();
     }
 
+    bool
+    ShouldPokeRoutes() const override;
+
     void
     QueueWork(std::function<void(void)> func) override;
 

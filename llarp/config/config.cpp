@@ -257,6 +257,7 @@ namespace llarp
   {
     (void)params;
 
+    static constexpr Default RoutePokerDefault{true};
     static constexpr Default ProfilingValueDefault{true};
     static constexpr Default ReachableDefault{true};
     static constexpr Default HopsDefault{4};
@@ -599,6 +600,17 @@ namespace llarp
 
           m_SRVRecords.push_back(std::move(newSRV));
         });
+
+    conf.defineOption<bool>(
+        "network",
+        "route-poker",
+        ClientOnly,
+        Comment{
+            "Enable or disable explicitly pushing all traffic over our network interface when exit "
+            "nodes are enabled",
+        },
+        RoutePokerDefault,
+        AssignmentAcceptor(m_enableRoutePoker));
 
     // Deprecated options:
     conf.defineOption<std::string>("network", "enabled", Deprecated);

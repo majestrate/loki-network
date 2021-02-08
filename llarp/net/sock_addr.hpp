@@ -31,6 +31,7 @@ namespace llarp
     SockAddr(uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint16_t port);
     SockAddr(std::string_view addr);
     SockAddr(std::string_view addr, uint16_t port);
+    SockAddr(uint32_t ip, uint16_t port);
 
     SockAddr(const AddressInfo&);
 
@@ -90,6 +91,9 @@ namespace llarp
 
     huint128_t
     asIPv6() const;
+    /// in network order
+    uint32_t
+    getIPv4() const;
 
     huint32_t
     asIPv4() const;

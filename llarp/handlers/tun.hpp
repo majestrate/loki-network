@@ -37,8 +37,8 @@ namespace llarp
       void
       SendPacketToRemote(const llarp_buffer_t&) override{};
 
-      std::string
-      GetIfName() const override;
+      std::shared_ptr<vpn::NetworkInterface>
+      GetNetworkInterface() const override;
 
       void
       Tick(llarp_time_t now) override;

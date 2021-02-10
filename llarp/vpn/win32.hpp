@@ -1,11 +1,22 @@
 #pragma once
-
 #include <windows.h>
-#include <iphlpapi.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <stdio.h>
+#include <strsafe.h>
+#include <locale>
+#include <codecvt>
+
 #include <io.h>
 #include <fcntl.h>
 #include <util/thread/queue.hpp>
+#include <util/logging/logger.hpp>
 #include <ev/vpn.hpp>
+#include <sstream>
+#include <string>
+#include <set>
+
+#include <net/net_if.hpp>
 
 // DDK macros
 #define CTL_CODE(DeviceType, Function, Method, Access) \
@@ -117,6 +128,54 @@ namespace llarp::vpn
     return deviceid;
   }
 
+  static std::wstring
+  get_win_sys_path()
+  {
+    wchar_t win_sys_path[MAX_PATH] = {0};
+    const wchar_t* default_sys_path = L"C:\\Windows\\system32";
+
+    if (!GetSystemDirectoryW(win_sys_path, _countof(win_sys_path)))
+    {
+      wcsncpy(win_sys_path, default_sys_path, _countof(win_sys_path));
+      win_sys_path[_countof(win_sys_path) - 1] = L'\0';
+    }
+    return win_sys_path;
+  }
+
+  static std::string
+  NetSHCommand()
+  {
+    std::wstring wcmd = get_win_sys_path() + L"\\netsh.exe";
+
+    using convert_type = std::codecvt_utf8<wchar_t>;
+    std::wstring_convert<convert_type, wchar_t> converter;
+    return converter.to_bytes(wcmd);
+  }
+
+  static void
+  NetSH(std::string commands)
+  {
+    commands = NetSHCommand() + " " + commands;
+    system(commands.c_str());
+  }
+
+  static std::string
+  RouteCommand()
+  {
+    std::wstring wcmd = get_win_sys_path() + L"\\route.exe";
+
+    using convert_type = std::codecvt_utf8<wchar_t>;
+    std::wstring_convert<convert_type, wchar_t> converter;
+    return converter.to_bytes(wcmd);
+  }
+
+  static void
+  Route(std::string args)
+  {
+    args = RouteCommand() + " " + args;
+    system(args.c_str());
+  }
+
   class Win32Interface : public NetworkInterface
   {
     std::atomic<bool> m_Run;
@@ -125,37 +184,6 @@ namespace llarp::vpn
     thread::Queue<net::IPPacket> m_ReadQueue;
 
     const InterfaceInfo m_Info;
-
-    static std::wstring
-    get_win_sys_path()
-    {
-      wchar_t win_sys_path[MAX_PATH] = {0};
-      const wchar_t* default_sys_path = L"C:\\Windows\\system32";
-
-      if (!GetSystemDirectoryW(win_sys_path, _countof(win_sys_path)))
-      {
-        wcsncpy(win_sys_path, default_sys_path, _countof(win_sys_path));
-        win_sys_path[_countof(win_sys_path) - 1] = L'\0';
-      }
-      return win_sys_path;
-    }
-
-    static std::string
-    NetSHCommand()
-    {
-      std::wstring wcmd = get_win_sys_path() + L"\\netsh.exe";
-
-      using convert_type = std::codecvt_utf8<wchar_t>;
-      std::wstring_convert<convert_type, wchar_t> converter;
-      return converter.to_bytes(wcmd);
-    }
-
-    static void
-    NetSH(std::string commands)
-    {
-      commands = NetSHCommand() + " " + commands;
-      ::system(commands.c_str());
-    }
 
    public:
     Win32Interface(InterfaceInfo info) : m_ReadQueue{1024}, m_Info{std::move(info)}
@@ -349,10 +377,10 @@ namespace llarp::vpn
       return not m_ReadQueue.empty();
     }
 
-    std::string
-    IfName() const override
+    InterfaceInfo
+    GetInfo() const override
     {
-      return "";
+      return m_Info;
     }
 
     void
@@ -444,6 +472,123 @@ namespace llarp::vpn
       netif->Start();
       return netif;
     };
+
+    /// add ip6 route
+    void AddRoute(RouteInfo<huint128_t>) override{};
+
+    void
+    AddV4Route(RouteInfo<huint32_t> ip4route, std::string extra = "")
+    {
+      std::stringstream ss;
+      ss << "ADD " << ip4route.addr << " MASK " << ip4route.netmask << " " << ip4route.gateway
+         << extra;
+      Route(ss.str());
+    }
+
+    void
+    DelV4Route(RouteInfo<huint32_t> ip4route, std::string extra = "")
+    {
+      std::stringstream ss;
+      ss << "DELETE " << ip4route.addr << " MASK " << ip4route.netmask << " " << ip4route.gateway
+         << extra;
+      Route(ss.str());
+    }
+
+    /// add ip4 route
+    void
+    AddRoute(RouteInfo<huint32_t> ip4route) override
+    {
+      AddV4Route(ip4route, " METRIC 2");
+    }
+
+    /// delete ip6 route
+    void DelRoute(RouteInfo<huint128_t>) override{};
+
+    /// delete ip4 route
+    void
+    DelRoute(RouteInfo<huint32_t> ip4route) override
+    {
+      AddV4Route(ip4route, " METRIC 2");
+    }
+
+    /// set default route via this vpn interface
+    void
+    AddDefaultRouteVia(std::shared_ptr<NetworkInterface> netif) override
+    {
+      if (not netif)
+        return;
+      // add loopback route because god is dead
+      AddV4Route(
+          RouteInfo<huint32_t>{huint32_t{0}, ipaddr_ipv4_bits(127, 0, 0, 0), netmask_ipv4_bits(8)});
+      for (const auto ifaddr : netif->GetInfo().addrs)
+      {
+        if (not ifaddr.IsV4())
+          continue;
+        const auto gateway = ifaddr.ToV4();
+        // lower
+        AddV4Route(
+            RouteInfo<huint32_t>{gateway, ipaddr_ipv4_bits(0, 0, 0, 0), netmask_ipv4_bits(1)});
+        // upper
+        AddV4Route(
+            RouteInfo<huint32_t>{gateway, ipaddr_ipv4_bits(128, 0, 0, 0), netmask_ipv4_bits(1)});
+      }
+    }
+
+    /// remove default route via this vpn interface
+    void
+    DelDefaultRouteVia(std::shared_ptr<NetworkInterface> netif) override
+    {
+      if (not netif)
+        return;
+      for (const auto ifaddr : netif->GetInfo().addrs)
+
+      {
+        if (not ifaddr.IsV4())
+          continue;
+        const auto gateway = ifaddr.ToV4();
+        // lower
+        DelV4Route(
+            RouteInfo<huint32_t>{gateway, ipaddr_ipv4_bits(0, 0, 0, 0), netmask_ipv4_bits(1)});
+        // upper
+        DelV4Route(
+            RouteInfo<huint32_t>{gateway, ipaddr_ipv4_bits(128, 0, 0, 0), netmask_ipv4_bits(1)});
+      }
+      // loopback
+      DelV4Route(
+          RouteInfo<huint32_t>{huint32_t{0}, ipaddr_ipv4_bits(127, 0, 0, 0), netmask_ipv4_bits(8)});
+    }
+
+    /// get default gateways that are not owned by this network interface
+    std::vector<huint32_t>
+    GetDefaultGatewaysNotOn(std::shared_ptr<NetworkInterface> netif) override
+    {
+      std::vector<huint32_t> gateways;
+      std::set<huint32_t> ifnames;
+      if (netif)
+      {
+        for (const auto addr : netif->GetInfo().addrs)
+        {
+          if (not addr.IsV4())
+            continue;
+          ifnames.emplace(addr.ToV4());
+        }
+      }
+
+      const auto allIF = net::NetIF::FetchAll();
+      // for each interface
+      for (const auto& localNetIf : allIF)
+      {
+        // grab its addresses
+        for (const auto& route : localNetIf.ip4addrs)
+        {
+          // if it is owned by our interface exlcude
+          if (const auto itr = ifnames.find(route.addr); itr != ifnames.end())
+            continue;
+          gateways.emplace_back(route.gateway);
+        }
+      }
+      return gateways;
+    }
   };
 
 }  // namespace llarp::vpn

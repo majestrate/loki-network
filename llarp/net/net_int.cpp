@@ -12,6 +12,13 @@ namespace llarp
   }
 
   template <>
+  huint32_t
+  ToHost(nuint32_t n)
+  {
+    return xntohl(n);
+  }
+
+  template <>
   void
   huint32_t::ToV6(V6Container& c)
   {

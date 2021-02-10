@@ -7,7 +7,7 @@
 namespace llarp
 {
   struct Context;
-}
+}  // namespace llarp
 
 namespace llarp::vpn
 {
@@ -21,6 +21,18 @@ namespace llarp::vpn
     operator<(const InterfaceAddress& other) const
     {
       return range < other.range or fam < other.fam;
+    }
+
+    bool
+    IsV4() const
+    {
+      return fam == AF_INET;
+    }
+
+    huint32_t
+    ToV4() const
+    {
+      return net::TruncateV6(range.addr);
     }
   };
 
@@ -46,8 +58,14 @@ namespace llarp::vpn
     PollFD() const = 0;
 
     /// the interface's name
-    virtual std::string
-    IfName() const = 0;
+    std::string
+    IfName() const
+    {
+      return GetInfo().ifname;
+    }
+
+    virtual InterfaceInfo
+    GetInfo() const = 0;
 
     /// read next ip packet
     /// blocks until ready
@@ -64,6 +82,18 @@ namespace llarp::vpn
     WritePacket(net::IPPacket pkt) = 0;
   };
 
+  /// an ip route spec
+  template <typename IP_t>
+  struct RouteInfo
+  {
+    /// gateway this route is reachable by
+    IP_t gateway;
+    /// address of remote route
+    IP_t addr;
+    /// netmask of remote route
+    IP_t netmask;
+  };
+
   /// a vpn platform
   /// responsible for obtaining vpn interfaces
   class Platform
@@ -78,6 +108,34 @@ namespace llarp::vpn
     /// blocks until ready, throws on error
     virtual std::shared_ptr<NetworkInterface>
     ObtainInterface(InterfaceInfo info) = 0;
+
+    /// add ip6 route
+    virtual void
+    AddRoute(RouteInfo<huint128_t> ip6route) = 0;
+
+    /// add ip4 route
+    virtual void
+    AddRoute(RouteInfo<huint32_t> ip4route) = 0;
+
+    /// delete ip6 route
+    virtual void
+    DelRoute(RouteInfo<huint128_t> ip6route) = 0;
+
+    /// delete ip4 route
+    virtual void
+    DelRoute(RouteInfo<huint32_t> ip4route) = 0;
+
+    /// set default route via this vpn interface
+    virtual void
+    AddDefaultRouteVia(std::shared_ptr<NetworkInterface> interface) = 0;
+
+    /// remove default route via this vpn interface
+    virtual void
+    DelDefaultRouteVia(std::shared_ptr<NetworkInterface> interface) = 0;
+
+    /// get default gateways that are not owned by this network interface
+    virtual std::vector<huint32_t>
+    GetDefaultGatewaysNotOn(std::shared_ptr<NetworkInterface> interface) = 0;
   };
 
   /// create native vpn platform

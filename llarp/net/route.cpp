@@ -460,5 +460,4 @@ namespace llarp::net
 #error unsupported platform
 #endif
   }
-
 }  // namespace llarp::net

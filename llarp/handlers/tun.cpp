@@ -662,14 +662,10 @@ namespace llarp
       return true;
     }
 
-    std::string
-    TunEndpoint::GetIfName() const
+    std::shared_ptr<vpn::NetworkInterface>
+    TunEndpoint::GetNetworkInterface() const
     {
-#ifdef _WIN32
-      return net::TruncateV6(GetIfAddr()).ToString();
-#else
-      return m_IfName;
-#endif
+      return m_NetIf;
     }
 
     bool

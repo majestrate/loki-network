@@ -21,10 +21,10 @@ namespace llarp
         return true;
       }
 
-      std::string
-      GetIfName() const override
+      std::shared_ptr<vpn::NetworkInterface>
+      GetNetworkInterface() const override
       {
-        return "";
+        return nullptr;
       }
 
       path::PathSet_ptr

@@ -29,13 +29,15 @@ namespace llarp
   void
   RoutePoker::DisableRoute(huint32_t ip, huint32_t gateway)
   {
-    net::DelRoute(ip.ToString(), gateway.ToString());
+    m_Router->GetVPNPlatform()->DelRoute(
+        vpn::RouteInfo<huint32_t>{gateway, ip, netmask_ipv4_bits(32)});
   }
 
   void
   RoutePoker::EnableRoute(huint32_t ip, huint32_t gateway)
   {
-    net::AddRoute(ip.ToString(), gateway.ToString());
+    m_Router->GetVPNPlatform()->AddRoute(
+        vpn::RouteInfo<huint32_t>{gateway, ip, netmask_ipv4_bits(32)});
   }
 
   void
@@ -70,7 +72,7 @@ namespace llarp
   RoutePoker::DisableAllRoutes()
   {
     const auto ep = m_Router->hiddenServiceContext().GetDefault();
-    net::DelDefaultRouteViaInterface(ep->GetIfName());
+    m_Router->GetVPNPlatform()->DelDefaultRouteVia(ep->GetNetworkInterface());
 
     for (const auto& [ip, gateway] : m_PokedRoutes)
       DisableRoute(ip, gateway);
@@ -88,10 +90,12 @@ namespace llarp
 
   RoutePoker::~RoutePoker()
   {
+    const auto vpn = m_Router->GetVPNPlatform();
+
     for (const auto& [ip, gateway] : m_PokedRoutes)
     {
-      if (gateway.h)
-        net::DelRoute(ip.ToString(), gateway.ToString());
+      if (gateway.h and vpn)
+        vpn->DelRoute(vpn::RouteInfo<huint32_t>{gateway, ip, netmask_ipv4_bits(32)});
     }
   }
 
@@ -102,14 +106,13 @@ namespace llarp
       throw std::runtime_error("Attempting to use RoutePoker before calling Init");
 
     const auto ep = m_Router->hiddenServiceContext().GetDefault();
-    const auto gateways = net::GetGatewaysNotOnInterface(ep->GetIfName());
+    const auto gateways =
+        m_Router->GetVPNPlatform()->GetDefaultGatewaysNotOn(ep->GetNetworkInterface());
     if (gateways.empty())
     {
       return std::nullopt;
     }
-    huint32_t addr{};
-    addr.FromString(gateways[0]);
-    return addr;
+    return gateways[0];
   }
 
   void
@@ -135,7 +138,7 @@ namespace llarp
       EnableAllRoutes();
 
       const auto ep = m_Router->hiddenServiceContext().GetDefault();
-      net::AddDefaultRouteViaInterface(ep->GetIfName());
+      m_Router->GetVPNPlatform()->AddDefaultRouteVia(ep->GetNetworkInterface());
     }
   }
 
@@ -146,7 +149,9 @@ namespace llarp
       return;
 
     m_Enabling = true;
+
     Update();
+
     m_Enabling = false;
     m_Enabled = true;
   }

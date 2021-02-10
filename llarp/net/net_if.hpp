@@ -15,11 +15,24 @@ if_nametoindex(const char* __ifname) __THROW;
 #endif
 #endif
 
+#include <ev/vpn.hpp>
+
 namespace llarp::net
 {
   /// get the name of the loopback interface
   std::string
   LoopbackInterfaceName();
+
+  struct NetIF
+  {
+    std::vector<vpn::RouteInfo<huint32_t>> ip4addrs;
+    std::vector<vpn::RouteInfo<huint128_t>> ip6addrs;
+    std::string ifname;
+
+    static std::vector<NetIF>
+    FetchAll();
+  };
+
 }  // namespace llarp::net
 
 #endif

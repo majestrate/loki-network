@@ -26,6 +26,17 @@
 #define inet_aton(x, y) inet_pton(AF_INET, x, y)
 #endif
 
+#if ANDROID
+#include <android/ifaddrs.h>
+#endif
+
+#ifndef _WIN32
+#include <arpa/inet.h>
+#if ANDROID
+#include <ifaddrs.h>
+#endif
+#endif
+
 bool
 operator==(const sockaddr& a, const sockaddr& b);
 

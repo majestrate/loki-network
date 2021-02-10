@@ -1,19 +1,7 @@
 #include <net/net.hpp>
-
 #include <net/net_if.hpp>
+
 #include <stdexcept>
-
-#ifdef ANDROID
-#include <android/ifaddrs.h>
-#endif
-
-#ifndef _WIN32
-#include <arpa/inet.h>
-#ifndef ANDROID
-#include <ifaddrs.h>
-#endif
-#endif
-
 #include <net/ip.hpp>
 #include <net/ip_range.hpp>
 #include <util/logging/logger.hpp>
@@ -78,7 +66,6 @@ operator==(const sockaddr_in6& a, const sockaddr_in6& b)
 // microsoft c++ and mingw 64-bit builds call the normal function
 #define DEFAULT_BUFFER_SIZE 15000
 
-// in any case, we still need to implement some form of
 // getifaddrs(3) with compatible semantics on NT...
 // daemon.ini section [bind] will have something like
 // [bind]
@@ -92,6 +79,7 @@ struct llarp_nt_ifaddrs_t
   unsigned int ifa_flags;              /* Flags as from SIOCGIFFLAGS ioctl.  */
   struct sockaddr* ifa_addr;           /* Network address of this interface.  */
   struct sockaddr* ifa_netmask;        /* Netmask of this interface.  */
+  int ifa_ifindex;
 };
 
 // internal struct
@@ -102,6 +90,8 @@ struct _llarp_nt_ifaddrs_t
   struct sockaddr_storage _addr;
   struct sockaddr_storage _netmask;
 };
+
+using ifaddrs = llarp_nt_ifaddrs_t;
 
 static inline void*
 _llarp_nt_heap_alloc(const size_t n_bytes)
@@ -236,10 +226,12 @@ _llarp_nt_getadaptersinfo(struct llarp_nt_ifaddrs_t** ifap)
       ift->_ifa.ifa_addr = (struct sockaddr*)&ift->_addr;
       val = llarp_nt_sockaddr_pton(pIPAddr->IpAddress.String, ift->_ifa.ifa_addr);
       assert(1 == val);
+      (void)val;
 
       /* name */
 #ifdef DEBUG
       fprintf(stderr, "name:%s IPv4 index:%lu\n", pAdapter->AdapterName, pAdapter->Index);
+      ift->_ifa.ifa_index = pAdapter->Index;
 #endif
       ift->_ifa.ifa_name = ift->_name;
       StringCchCopyN(ift->_ifa.ifa_name, 128, pAdapter->AdapterName, 128);
@@ -325,7 +317,7 @@ llarp_nt_if_nametoindex(const char* ifname)
 }
 
 // fix up names for win32
-#define ifaddrs llarp_nt_ifaddrs_t
+using ifaddrs = llarp_nt_ifaddrs_t;
 #define getifaddrs llarp_nt_getifaddrs
 #define freeifaddrs llarp_nt_freeifaddrs
 #define if_nametoindex llarp_nt_if_nametoindex
@@ -398,7 +390,7 @@ llarp_getifaddr(const char* ifname, int af, struct sockaddr* addr)
 namespace llarp
 {
   static void
-  IterAllNetworkInterfaces(std::function<void(ifaddrs* const)> visit)
+  IterateNetworkInterfaces(std::function<void(ifaddrs* const)> visit)
   {
     ifaddrs* ifa = nullptr;
 #ifndef _WIN32
@@ -418,6 +410,7 @@ namespace llarp
     if (ifa)
       freeifaddrs(ifa);
   }
+
   namespace net
   {
     std::string
@@ -425,7 +418,7 @@ namespace llarp
     {
       const auto loopback = IPRange::FromIPv4(127, 0, 0, 0, 8);
       std::string ifname;
-      IterAllNetworkInterfaces([&ifname, loopback](ifaddrs* const i) {
+      IterateNetworkInterfaces([&ifname, loopback](ifaddrs* const i) {
         if (i->ifa_addr and i->ifa_addr->sa_family == AF_INET)
         {
           llarp::nuint32_t addr{((sockaddr_in*)i->ifa_addr)->sin_addr.s_addr};
@@ -442,13 +435,100 @@ namespace llarp
       }
       return ifname;
     }
+
+#ifdef _WIN32
+    template <typename Visit>
+    void
+    ForEachWIN32Interface(Visit visit)
+    {
+#define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
+#define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
+      MIB_IPFORWARDTABLE* pIpForwardTable;
+      DWORD dwSize = 0;
+      DWORD dwRetVal = 0;
+
+      pIpForwardTable = (MIB_IPFORWARDTABLE*)MALLOC(sizeof(MIB_IPFORWARDTABLE));
+      if (pIpForwardTable == nullptr)
+        return;
+
+      if (GetIpForwardTable(pIpForwardTable, &dwSize, 0) == ERROR_INSUFFICIENT_BUFFER)
+      {
+        FREE(pIpForwardTable);
+        pIpForwardTable = (MIB_IPFORWARDTABLE*)MALLOC(dwSize);
+        if (pIpForwardTable == nullptr)
+        {
+          return;
+        }
+      }
+
+      if ((dwRetVal = GetIpForwardTable(pIpForwardTable, &dwSize, 0)) == NO_ERROR)
+      {
+        for (int i = 0; i < (int)pIpForwardTable->dwNumEntries; i++)
+        {
+          visit(&pIpForwardTable->table[i]);
+        }
+      }
+      FREE(pIpForwardTable);
+#undef MALLOC
+#undef FREE
+    }
+#endif
+
+    std::vector<NetIF>
+    NetIF::FetchAll()
+    {
+#ifdef _WIN32
+      std::unordered_map<DWORD, NetIF> interfaces;
+      ForEachWIN32Interface([&interfaces](auto w) {
+        in_addr gateway{};
+        gateway.S_un.S_addr = (u_long)w->dwForwardDest;
+        if ((!gateway.S_un.S_addr))
+        {
+          auto& iface = interfaces[w->dwForwardIfIndex];
+          if (w->dwForwardDest == 0)
+          {
+            const nuint32_t gateway{w->dwForwardNextHop};
+            const nuint32_t address{0};
+            const nuint32_t netmask{w->dwForwardMask};
+            iface.ip4addrs.emplace_back(
+                vpn::RouteInfo<huint32_t>{ToHost(gateway), ToHost(address), ToHost(netmask)});
+          }
+        }
+      });
+      IterateNetworkInterfaces([&interfaces](ifaddrs* ifr) {
+        if (not ifr)
+          return;
+        if (not ifr->ifa_addr)
+          return;
+        if (ifr->ifa_addr->sa_family != AF_INET)
+          return;
+        // existing index
+        if (auto itr = interfaces.find(ifr->ifa_ifindex); itr != interfaces.end())
+        {
+          const nuint32_t netaddr{((sockaddr_in*)ifr->ifa_addr)->sin_addr.s_addr};
+          for (auto& addr : itr->second.ip4addrs)
+          {
+            addr.addr = ToHost(netaddr);
+          }
+        }
+      });
+      std::vector<NetIF> all;
+      for (const auto& item : interfaces)
+      {
+        all.emplace_back(item.second);
+      }
+      return all;
+#else
+      return {};
+#endif
+    }
   }  // namespace net
 
   bool
   GetBestNetIF(std::string& ifname, int af)
   {
     bool found = false;
-    IterAllNetworkInterfaces([&](ifaddrs* i) {
+    IterateNetworkInterfaces([&](ifaddrs* i) {
       if (found)
         return;
       if (i->ifa_addr)
@@ -474,7 +554,7 @@ namespace llarp
   FindFreeRange()
   {
     std::list<IPRange> currentRanges;
-    IterAllNetworkInterfaces([&](ifaddrs* i) {
+    IterateNetworkInterfaces([&](ifaddrs* i) {
       if (i && i->ifa_addr)
       {
         const auto fam = i->ifa_addr->sa_family;

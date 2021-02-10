@@ -109,8 +109,9 @@ namespace llarp
         return false;
       }
 
-      virtual std::string
-      GetIfName() const = 0;
+      /// get the underlying network interface
+      virtual std::shared_ptr<vpn::NetworkInterface>
+      GetNetworkInterface() const = 0;
 
       /// inject vpn io
       /// return false if not supported

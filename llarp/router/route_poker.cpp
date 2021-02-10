@@ -69,6 +69,9 @@ namespace llarp
   void
   RoutePoker::DisableAllRoutes()
   {
+    const auto ep = m_Router->hiddenServiceContext().GetDefault();
+    net::DelDefaultRouteViaInterface(ep->GetIfName());
+
     for (const auto& [ip, gateway] : m_PokedRoutes)
       DisableRoute(ip, gateway);
   }

@@ -83,6 +83,9 @@ namespace llarp
 
     /// port is in host order
     void
+    setIPv4(uint32_t ip);
+
+    void
     setPort(uint16_t port);
 
     /// port is in host order

@@ -85,8 +85,8 @@ namespace llarp
         hdr->check = 0;
         hdr->check = net::ipchksum(pkt.buf, 20);
         pkt.sz = 28 + buf.size();
-        const auto net = m_Endpoint->GetNetworkInterface();
-        net->WritePacket(pkt);
+        m_Endpoint->HandleWriteIPPacket(
+            pkt.ConstBuffer(), net::ExpandV4(remoteIP.toIP()), net::ExpandV4(localIP.toIP()), 0);
       }
     };
 

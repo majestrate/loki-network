@@ -8,9 +8,10 @@ extern "C"
   JNIEXPORT jobject JNICALL
   Java_network_loki_lokinet_LokinetConfig_Obtain(JNIEnv* env, jclass, jstring dataDir)
   {
-    auto conf = VisitStringAsStringView<llarp::Config*>(env, dataDir, [](std::string_view val) -> llarp::Config* {
-      return new llarp::Config{val};
-    });
+    auto conf = VisitStringAsStringView<llarp::Config*>(
+        env, dataDir, [](std::string_view val) -> llarp::Config* {
+          return new llarp::Config{val};
+        });
 
     if (conf == nullptr)
       return nullptr;

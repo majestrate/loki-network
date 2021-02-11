@@ -9,20 +9,17 @@
 
 namespace llarp::vpn
 {
-
   class AndroidInterface : public NetworkInterface
   {
-
     const int m_fd;
-    const InterfaceInfo m_Info; // likely 100% ignored on android, at least for now
+    const InterfaceInfo m_Info;  // likely 100% ignored on android, at least for now
 
-    public:
-
-    AndroidInterface(InterfaceInfo info, int fd)
-      : m_fd(fd), m_Info(info)
+   public:
+    AndroidInterface(InterfaceInfo info, int fd) : m_fd(fd), m_Info(info)
     {
       if (m_fd == -1)
-        throw std::runtime_error("Error opening AndroidVPN layer FD: " + std::string{strerror(errno)});
+        throw std::runtime_error(
+            "Error opening AndroidVPN layer FD: " + std::string{strerror(errno)});
     }
 
     virtual ~AndroidInterface()
@@ -62,26 +59,50 @@ namespace llarp::vpn
       return false;
     }
 
-    std::string
-    IfName() const override
+    InterfaceInfo
+    GetInfo() const override
     {
-      return m_Info.ifname;
+      return m_Info;
     }
-
   };
 
   class AndroidPlatform : public Platform
   {
     const int fd;
-    public:
-      AndroidPlatform(llarp::Context* ctx) : fd(ctx->GetAndroidFD()) { }
 
+   public:
+    AndroidPlatform(llarp::Context* ctx) : fd(ctx->GetAndroidFD())
+    {}
 
-      std::shared_ptr<NetworkInterface>
-      ObtainInterface(InterfaceInfo info) override
-      {
-        return std::make_shared<AndroidInterface>(std::move(info), fd);
-      }
+    std::shared_ptr<NetworkInterface>
+    ObtainInterface(InterfaceInfo info) override
+    {
+      return std::make_shared<AndroidInterface>(std::move(info), fd);
+    }
+
+    /// add ip6 route
+    void AddRoute(RouteInfo<huint128_t>) override{};
+
+    /// add ip4 route
+    void AddRoute(RouteInfo<huint32_t>) override{};
+
+    /// delete ip6 route
+    void DelRoute(RouteInfo<huint128_t>) override{};
+
+    /// delete ip4 route
+    void DelRoute(RouteInfo<huint32_t>) override{};
+
+    /// set default route via this vpn interface
+    void AddDefaultRouteVia(std::shared_ptr<NetworkInterface>) override{};
+
+    /// remove default route via this vpn interface
+    void DelDefaultRouteVia(std::shared_ptr<NetworkInterface>) override{};
+
+    /// get default gateways that are not owned by this network interface
+    std::vector<huint32_t> GetDefaultGatewaysNotOn(std::shared_ptr<NetworkInterface>) override
+    {
+      return {};
+    };
   };
 
-} // namespace llarp::vpn
+}  // namespace llarp::vpn

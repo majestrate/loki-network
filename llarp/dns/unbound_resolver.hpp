@@ -17,8 +17,9 @@
 
 namespace llarp::dns
 {
-  using ReplyFunction = std::function<void(SockAddr source, std::vector<byte_t> buf)>;
-  using FailFunction = std::function<void(SockAddr source, Message msg)>;
+  using ReplyFunction =
+      std::function<void(SockAddr resolver, SockAddr source, std::vector<byte_t> buf)>;
+  using FailFunction = std::function<void(SockAddr resolver, SockAddr source, Message msg)>;
 
   class UnboundResolver : public std::enable_shared_from_this<UnboundResolver>
   {
@@ -52,7 +53,7 @@ namespace llarp::dns
     AddUpstreamResolver(const std::string& upstreamResolverIP);
 
     void
-    Lookup(const SockAddr& source, Message msg);
+    Lookup(SockAddr to, SockAddr from, Message msg);
   };
 
 }  // namespace llarp::dns

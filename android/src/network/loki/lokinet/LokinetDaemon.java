@@ -81,9 +81,9 @@ public class LokinetDaemon extends VpnService
       VpnService.Builder builder = new VpnService.Builder();
 
       builder.setMtu(1500);
-      builder.addAddress("172.16.0.1", 16);
+      builder.addAddress("172.16.0.1", 32);
       builder.addRoute("0.0.0.0", 0);
-      builder.addDnsServer("172.16.0.1");
+      builder.addDnsServer("1.1.1.1");
       builder.setSession("Lokinet");
       builder.setConfigureIntent(null);
 

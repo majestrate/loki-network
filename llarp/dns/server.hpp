@@ -46,24 +46,24 @@ namespace llarp
       Restart();
 
       void
-      HandlePacket(SockAddr from, Buffer_t buf);
+      HandlePacket(SockAddr resolver, SockAddr from, Buffer_t buf);
+
+      bool
+      ShouldHandlePacket(SockAddr to, SockAddr from, Buffer_t buf) const;
 
      protected:
       virtual void
-      SendServerMessageBufferTo(SockAddr to, Buffer_t buf) = 0;
+      SendServerMessageBufferTo(SockAddr from, SockAddr to, Buffer_t buf) = 0;
 
      private:
       void
-      HandleUpstreamResponse(SockAddr to, std::vector<byte_t> buf);
-
-      void
-      HandleUpstreamFailure(SockAddr to, Message msg);
+      HandleUpstreamFailure(SockAddr from, SockAddr to, Message msg);
 
       bool
       SetupUnboundResolver(std::vector<IpAddress> resolvers);
 
       IQueryHandler* const m_QueryHandler;
-      std::vector<IpAddress> m_Resolvers;
+      std::set<IpAddress> m_Resolvers;
       std::shared_ptr<UnboundResolver> m_UnboundResolver;
       Logic_ptr m_Logic;
     };
@@ -80,7 +80,7 @@ namespace llarp
 
      protected:
       void
-      SendServerMessageBufferTo(SockAddr to, Buffer_t buf) override;
+      SendServerMessageBufferTo(SockAddr from, SockAddr to, Buffer_t buf) override;
 
      private:
       static void

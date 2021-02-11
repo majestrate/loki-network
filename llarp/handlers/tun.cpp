@@ -37,50 +37,58 @@ namespace llarp
       static constexpr auto FlushInterval = 25ms;
       return now >= m_LastFlushAt + FlushInterval;
     }
-#if ANDROID
     constexpr size_t udp_header_size = 8;
 
-    struct AndroidDnsHandler : public dns::PacketHandler
+    struct DnsHandler : public dns::PacketHandler
     {
       TunEndpoint* const m_Endpoint;
 
-      explicit AndroidDnsHandler(AbstractRouter* router, TunEndpoint* ep)
+      explicit DnsHandler(AbstractRouter* router, TunEndpoint* ep)
           : dns::PacketHandler{router->logic(), ep}, m_Endpoint{ep} {};
 
       void
-      SendServerMessageBufferTo(SockAddr to, std::vector<byte_t> buf) override
+      SendServerMessageBufferTo(SockAddr from, SockAddr to, std::vector<byte_t> buf) override
       {
-        net::IPPacket pkt{};
-        auto* hdr = pkt.Header();
+        net::IPPacket pkt;
 
-        hdr->ihl = 5;
+        if (buf.size() + 28 > sizeof(pkt.buf))
+          return;
+
+        auto* hdr = pkt.Header();
+        pkt.buf[1] = 0;
         hdr->version = 4;
-        hdr->tot_len = buf.size() + udp_header_size;
+        hdr->ihl = 5;
+        hdr->tot_len = htons(buf.size() + 28);
         hdr->protocol = 0x11;  // udp
-        hdr->ttl = 1;
+        hdr->ttl = 64;
+        hdr->frag_off = htons(0b0100000000000000);
+
+        hdr->saddr = from.getIPv4();
+        hdr->daddr = to.getIPv4();
 
         // make udp packet
-        std::vector<byte_t> udp{};
-        udp.resize(hdr->tot_len);
-        uint8_t* ptr = udp.data();
-        htobe16buf(ptr, htons(53));
+        uint8_t* ptr = pkt.buf + 20;
+        htobe16buf(ptr, from.getPort());
         ptr += 2;
-        htobe16buf(ptr, htons(to.getPort()));
+        htobe16buf(ptr, to.getPort());
         ptr += 2;
-        htobe16buf(ptr, buf.size());
-        std::copy_n(buf.data(), buf.size(), udp.data() + udp_header_size);
-
-        // put udp packet
-        std::copy_n(udp.data(), udp.size(), pkt.buf + (hdr->ihl * 4));
+        htobe16buf(ptr, buf.size() + 8);
+        ptr += 2;
+        htobe16buf(ptr, uint16_t{0});  // checksum
+        ptr += 2;
+        std::copy_n(buf.data(), buf.size(), ptr);
 
         /// queue ip packet write
-        const IpAddress remoteIP{to};
-        m_Endpoint->HandleWriteIPPacket(
-            pkt.ConstBuffer(), m_Endpoint->GetIfAddr(), net::ExpandV4(remoteIP.toIP()), 0);
+        const IpAddress remoteIP{from};
+        const IpAddress localIP{to};
+
+        hdr->check = 0;
+        hdr->check = net::ipchksum(pkt.buf, 20);
+        pkt.sz = 28 + buf.size();
+        const auto net = m_Endpoint->GetNetworkInterface();
+        net->WritePacket(pkt);
       }
     };
-
-#endif
 
     TunEndpoint::TunEndpoint(AbstractRouter* r, service::Context* parent)
         : service::Endpoint(r, parent)
@@ -89,18 +97,23 @@ namespace llarp
       m_PacketRouter.reset(
           new vpn::PacketRouter{[&](net::IPPacket pkt) { HandleGotUserPacket(std::move(pkt)); }});
 #if ANDROID
-      m_Resolver = std::make_shared<AndroidDnsHandler>(r, this);
-      m_PacketRouter->AddUDPHandler(nuint16_t{53}, [resolver = m_Resolver](net::IPPacket pkt) {
+      m_Resolver = std::make_shared<DnsHandler>(r, this);
+      m_PacketRouter->AddUDPHandler(huint16_t{53}, [&](net::IPPacket pkt) {
         const size_t ip_header_size = (pkt.Header()->ihl * 4);
 
         const uint8_t* ptr = pkt.buf + ip_header_size;
+        const auto dst = ToNet(pkt.dstv4());
         const auto src = ToNet(pkt.srcv4());
         const SockAddr raddr{src.n, *reinterpret_cast<const uint16_t*>(ptr)};
+        const SockAddr laddr{dst.n, *reinterpret_cast<const uint16_t*>(ptr + 2)};
 
         std::vector<byte_t> buf;
         buf.resize(pkt.sz - (udp_header_size + ip_header_size));
         std::copy_n(ptr + udp_header_size, buf.size(), buf.data());
-        resolver->HandlePacket(raddr, std::move(buf));
+        if (m_Resolver->ShouldHandlePacket(laddr, raddr, buf))
+          m_Resolver->HandlePacket(laddr, raddr, std::move(buf));
+        else
+          HandleGotUserPacket(std::move(pkt));
       });
 #else
       m_Resolver = std::make_shared<dns::Proxy>(r->netloop(), r->logic(), this);
@@ -1071,7 +1084,9 @@ namespace llarp
       auto& pkt = write.pkt;
       // load
       if (!pkt.Load(buf))
+      {
         return false;
+      }
       if (pkt.IsV4())
       {
         pkt.UpdateIPv4Address(xhtonl(net::TruncateV6(src)), xhtonl(net::TruncateV6(dst)));

@@ -300,6 +300,12 @@ namespace llarp
     return m_empty;
   }
 
+  uint32_t
+  SockAddr::getIPv4() const
+  {
+    return m_addr4.sin_addr.s_addr;
+  }
+
   void
   SockAddr::setIPv4(uint32_t ip)
   {

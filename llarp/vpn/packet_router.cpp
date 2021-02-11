@@ -61,7 +61,7 @@ namespace llarp::vpn
   }
 
   void
-  PacketRouter::AddUDPHandler(nuint16_t localport, PacketHandlerFunc func)
+  PacketRouter::AddUDPHandler(huint16_t localport, PacketHandlerFunc func)
   {
     constexpr byte_t udp_proto = 0x11;
 
@@ -69,7 +69,7 @@ namespace llarp::vpn
     {
       m_IPProtoHandler.emplace(udp_proto, std::make_unique<UDPPacketHandler>(m_BaseHandler));
     }
-    m_IPProtoHandler[udp_proto]->AddSubHandler(localport, func);
+    m_IPProtoHandler[udp_proto]->AddSubHandler(ToNet(localport), func);
   }
 
   void

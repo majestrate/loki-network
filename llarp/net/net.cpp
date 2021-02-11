@@ -19,6 +19,12 @@
 #include <util/logging/logger.hpp>
 #include <util/str.hpp>
 
+#if ANDROID
+#include <android/ifaddrs.h>
+#else
+#include <ifaddrs.h>
+#endif
+
 #include <cstdio>
 #include <list>
 

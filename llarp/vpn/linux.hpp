@@ -7,6 +7,10 @@
 #include <fcntl.h>
 #include <vpn/common.hpp>
 #include <linux/if_tun.h>
+#include <linux/rtnetlink.h>
+
+#include <net/net_if.hpp>
+#include <util/str.hpp>
 
 namespace llarp::vpn
 {

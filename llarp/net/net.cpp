@@ -473,6 +473,11 @@ namespace llarp
   std::optional<IPRange>
   FindFreeRange()
   {
+#if ANDROID
+    // hardcodd because i just want it to work
+    // FIXME: make this not shit
+    return IPRange::FromIPv4(172, 16, 0, 1, 16);
+#else
     std::list<IPRange> currentRanges;
     IterAllNetworkInterfaces([&](ifaddrs* i) {
       if (i && i->ifa_addr)
@@ -524,6 +529,7 @@ namespace llarp
         return range;
     }
     return std::nullopt;
+#endif
   }
 
   std::optional<std::string>

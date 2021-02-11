@@ -83,7 +83,7 @@ public class LokinetDaemon extends VpnService
       builder.setMtu(1500);
       builder.addAddress("172.16.0.1", 16);
       builder.addRoute("0.0.0.0", 0);
-      builder.addDnsServer("1.1.1.1"); // dummy address, native code will intercept dns
+      builder.addDnsServer("172.16.0.1");
       builder.setSession("Lokinet");
       builder.setConfigureIntent(null);
 

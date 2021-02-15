@@ -79,9 +79,7 @@ extern "C"
   {
     auto ptr = GetImpl<llarp::Context>(env, self);
 
-    int fd = GetObjectMemberAsInt<int>(env, self, "m_FD");
-
-    ptr->SetAndroidFD(fd);
+    ptr->androidFD = GetObjectMemberAsInt<int>(env, self, "m_FD");
   }
 
   JNIEXPORT jint JNICALL

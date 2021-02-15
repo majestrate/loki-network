@@ -71,7 +71,7 @@ namespace llarp::vpn
     const int fd;
 
    public:
-    AndroidPlatform(llarp::Context* ctx) : fd(ctx->GetAndroidFD())
+    AndroidPlatform(llarp::Context* ctx) : fd(ctx->androidFD)
     {}
 
     std::shared_ptr<NetworkInterface>

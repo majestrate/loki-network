@@ -100,17 +100,8 @@ namespace llarp
     makeVPNPlatform();
 
 #ifdef ANDROID
-    void
-    SetAndroidFD(int fd)
-    {
-      androidFD = fd;
-    }
 
-    int
-    GetAndroidFD()
-    {
-      return androidFD;
-    }
+    int androidFD = -1;
 
     int
     GetUDPSocket();
@@ -124,10 +115,6 @@ namespace llarp
     SigINT();
 
     std::unique_ptr<std::promise<void>> closeWaiter;
-
-#ifdef ANDROID
-    int androidFD = -1;
-#endif
   };
 
 }  // namespace llarp

@@ -72,7 +72,7 @@ namespace llarp
         ptr += 2;
         htobe16buf(ptr, to.getPort());
         ptr += 2;
-        htobe16buf(ptr, buf.size() + 8);
+        htobe16buf(ptr, buf.size() + udp_header_size);
         ptr += 2;
         htobe16buf(ptr, uint16_t{0});  // checksum
         ptr += 2;

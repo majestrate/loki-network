@@ -1020,6 +1020,12 @@ namespace llarp
     }
   }
 
+  void
+  Config::AddDefault(std::string section, std::string key, std::string val)
+  {
+    m_Additional.emplace_back(std::array<std::string, 3>{section, key, val});
+  }
+
   bool
   Config::Load(std::optional<fs::path> fname, bool isRelay)
   {
@@ -1073,17 +1079,18 @@ namespace llarp
       m_Parser.Clear();
       LoadOverrides();
 
+      /// load additional config options added
+      for (const auto& [sect, key, val] : m_Additional)
+      {
+        conf.addConfigValue(sect, key, val);
+      }
+
       m_Parser.IterAll([&](std::string_view section, const SectionValues_t& values) {
         for (const auto& pair : values)
         {
           conf.addConfigValue(section, pair.first, pair.second);
         }
       });
-
-// temporary hard-coded exit for android testing
-#if defined(ANDROID)
-      conf.addConfigValue("network", "exit-node", "exit.loki");
-#endif
 
       conf.acceptAllOptions();
 

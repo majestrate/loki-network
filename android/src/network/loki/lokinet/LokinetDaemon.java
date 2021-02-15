@@ -27,7 +27,6 @@ public class LokinetDaemon extends VpnService
   public static final String LOG_TAG = "LokinetDaemon";
 
   ByteBuffer impl = null;
-  LokinetConfig config = new LokinetConfig();
   ParcelFileDescriptor iface;
   int m_FD = -1;
   int m_UDPSocket = -1;
@@ -71,8 +70,29 @@ public class LokinetDaemon extends VpnService
       }
 
       String dataDir = getFilesDir().toString();
+      LokinetConfig config;
+      try
+      {
+        config = new LokinetConfig(dataDir);
+      }
+      catch(RuntimeException ex)
+      {
+        Log.e(LOG_TAG, ex.toString());
+        return START_NOT_STICKY;
+      }
 
-      if (!config.LoadConfigFile(dataDir))
+      // FIXME: make these configurable
+      String exitNode = "exit.loki";
+      String upstreamDNS = "1.1.1.1";
+      String ourIP = "172.16.0.1";
+      
+      // set up config values
+      config.AddDefaultValue("network", "exit-node", exitNode);
+      config.AddDefaultValue("network", "ifaddr", ourIP+"/16");
+      config.AddDefaultValue("dns", "upstream", upstreamDNS);
+
+      
+      if (!config.Load())
       {
         Log.e(LOG_TAG, "failed to load (or create) config file at: " + dataDir + "/lokinet.ini");
         return START_NOT_STICKY;
@@ -81,9 +101,10 @@ public class LokinetDaemon extends VpnService
       VpnService.Builder builder = new VpnService.Builder();
 
       builder.setMtu(1500);
-      builder.addAddress("172.16.0.1", 32);
+      // why yes we DO want a /32 here even though it's not in the config how could you tell?
+      builder.addAddress(ourIP, 32);
       builder.addRoute("0.0.0.0", 0);
-      builder.addDnsServer("1.1.1.1");
+      builder.addDnsServer(upstreamDNS);
       builder.setSession("Lokinet");
       builder.setConfigureIntent(null);
 

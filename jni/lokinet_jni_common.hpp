@@ -26,7 +26,7 @@ VisitStringAsStringView(JNIEnv* env, jobject str, V visit)
   env->ReleaseByteArrayElements(stringJbytes, pBytes, JNI_ABORT);
   env->DeleteLocalRef(stringJbytes);
 
-  return std::move(result);
+  return result;
 }
 
 /// cast jni buffer to T *

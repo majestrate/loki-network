@@ -22,7 +22,9 @@
 #if ANDROID
 #include <android/ifaddrs.h>
 #else
+#ifndef _WIN32
 #include <ifaddrs.h>
+#endif
 #endif
 
 #include <cstdio>

@@ -10,8 +10,8 @@ namespace llarp
   {
     return xntohl(n);
   }
-  
-  template<>
+
+  template <>
   nuint16_t
   ToNet(huint16_t h)
   {

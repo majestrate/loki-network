@@ -130,16 +130,17 @@ namespace llarp::dns
   bool
   PacketHandler::ShouldHandlePacket(SockAddr to, SockAddr from, Buffer_t buf) const
   {
-#if 1
+    (void)from;
+
     MessageHeader hdr;
-    llarp_buffer_t pkt(buf);
-    if (!hdr.Decode(&pkt))
+    llarp_buffer_t pkt{buf};
+    if (not hdr.Decode(&pkt))
     {
       return false;
     }
 
-    Message msg(hdr);
-    if (!msg.Decode(&pkt))
+    Message msg{hdr};
+    if (not msg.Decode(&pkt))
     {
       return false;
     }
@@ -151,10 +152,6 @@ namespace llarp::dns
     {
       return false;
     }
-#endif
-    (void)to;
-    (void)from;
-    (void)buf;
     return true;
   }
 
@@ -162,15 +159,15 @@ namespace llarp::dns
   PacketHandler::HandlePacket(SockAddr resolver, SockAddr from, Buffer_t buf)
   {
     MessageHeader hdr;
-    llarp_buffer_t pkt(buf);
-    if (!hdr.Decode(&pkt))
+    llarp_buffer_t pkt{buf};
+    if (not hdr.Decode(&pkt))
     {
       llarp::LogWarn("failed to parse dns header from ", from);
       return;
     }
 
     Message msg(hdr);
-    if (!msg.Decode(&pkt))
+    if (not msg.Decode(&pkt))
     {
       llarp::LogWarn("failed to parse dns message from ", from);
       return;
@@ -192,7 +189,6 @@ namespace llarp::dns
         SendServerMessageBufferTo(resolver, from, MessageToBuffer(std::move(msg)));
         return;
       }
-      LogInfo(q);
     }
 
     if (m_QueryHandler && m_QueryHandler->ShouldHookDNSMessage(msg))

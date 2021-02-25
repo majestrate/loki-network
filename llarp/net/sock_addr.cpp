@@ -314,7 +314,8 @@ namespace llarp
     uint8_t* ip6 = m_addr.sin6_addr.s6_addr;
     llarp::Zero(ip6, sizeof(m_addr.sin6_addr.s6_addr));
 
-    applySIITBytes();
+    applyIPv4MapBytes();
+
     std::memcpy(ip6 + 12, &ip, 4);
     m_addr4.sin_addr.s_addr = ip;
     m_addr4.sin_family = AF_INET;

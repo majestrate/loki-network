@@ -77,7 +77,7 @@ local apk_builder(name, image, extra_cmds=[], allow_fail=true) = {
             environment: { SSH_KEY: { from_secret: "SSH_KEY" }, ANDROID: "android" },
             commands: [
                 "cd android",
-                "rm -f local.properties"
+                "rm -f local.properties",
                 "echo 'sdk.dir=/usr/lib/android-sdk' >> local.properties",
                 "echo 'ndk.dir=/usr/lib/android-ndk' >> local.properties",
                 "GRADLE_USER_HOME=/cache/gradle gradle assembleDebug",

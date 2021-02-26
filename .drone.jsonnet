@@ -62,8 +62,30 @@ local debian_pipeline(name, image,
         }
     ],
 };
-
-// windows cross compile on alpine linux
+local android_builder(name, image, extra_cmds=[], allow_fail=true) = {
+    kind: 'pipeline',
+    type: 'docker',
+    name: name,
+    platform: "amd64",
+    trigger: { branch: { exclude: ['debian/*', 'ubuntu/*'] } },
+    steps: [
+        submodules,
+        {
+            name: 'build',
+            image: image,
+            [if allow_fail then "failure"]: "ignore",
+            environment: { SSH_KEY: { from_secret: "SSH_KEY" }, ANDROID: "android" },
+            commands: [
+                "cd android",
+                "rm -f local.properties"
+                "echo 'sdk.dir=/usr/lib/android-sdk' >> local.properties",
+                "echo 'ndk.dir=/usr/lib/android-ndk' >> local.properties",
+                "gradle assembleDebug",
+            ] + extra_cmds
+        }
+    ]
+};
+// windows cross compile on debian
 local windows_cross_pipeline(name, image,
         arch='amd64',
         build_type='Release',

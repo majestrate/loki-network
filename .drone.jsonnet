@@ -66,7 +66,7 @@ local apk_builder(name, image, extra_cmds=[], allow_fail=true) = {
     kind: 'pipeline',
     type: 'docker',
     name: name,
-    platform: "amd64",
+    platform: {arch: "amd64"},
     trigger: { branch: { exclude: ['debian/*', 'ubuntu/*'] } },
     steps: [
         submodules,

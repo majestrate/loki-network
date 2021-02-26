@@ -39,7 +39,7 @@ if [ -e daemon/lokinet.exe ]; then
     # zipit up yo
     archive="$base.zip"
     zip -r "$archive" "$base"
-else if [ -e build/outputs/apk/debug/lokinet-debug.apk ] ; then
+elif [ -e build/outputs/apk/debug/lokinet-debug.apk ] ; then
     # android af ngl
     cp -av build/outputs/apk/debug/lokinet-debug.apk "$base"
     archive="$base.tar.xz"

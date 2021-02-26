@@ -80,7 +80,7 @@ local apk_builder(name, image, extra_cmds=[], allow_fail=true) = {
                 "rm -f local.properties",
                 "echo 'sdk.dir=/usr/lib/android-sdk' >> local.properties",
                 "echo 'ndk.dir=/usr/lib/android-ndk' >> local.properties",
-                "GRADLE_USER_HOME=/cache/gradle gradle assembleDebug",
+                "GRADLE_USER_HOME=/cache/gradle gradle --no-daemon assembleDebug",
             ] + extra_cmds
         }
     ]

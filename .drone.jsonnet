@@ -247,6 +247,8 @@ local mac_builder(name, build_type='Release', werror=true, cmake_extra='', extra
                         '../contrib/ci/drone-check-static-libs.sh',
                         'UPLOAD_OS=linux-armhf ../contrib/ci/drone-static-upload.sh'
                     ]),
+    // android apk builder
+    apk_builder("android apk", "registry.oxen.rocks/lokinet-ci-android", extra_cmds=['UPLOAD_OS=anrdoid ../contrib/ci/drone-static-upload.sh']),
     
     // Windows builds (x64)
     windows_cross_pipeline("Windows (amd64)", "debian:testing",
@@ -273,8 +275,6 @@ local mac_builder(name, build_type='Release', werror=true, cmake_extra='', extra
     deb_builder("debian:buster", "buster", "debian/buster"),
     deb_builder("ubuntu:focal", "focal", "ubuntu/focal"),
     deb_builder("debian:sid", "sid", "debian/sid", arch='arm64'),
-    // android apk builder
-    apk_builder("android apk", "registry.oxen.rocks/lokinet-ci-android", extra_cmds=['UPLOAD_OS=anrdoid ../contrib/ci/drone-static-upload.sh']),
 
     // Macos builds:
     mac_builder('macOS (Release)'),

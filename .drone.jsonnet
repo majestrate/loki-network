@@ -62,7 +62,7 @@ local debian_pipeline(name, image,
         }
     ],
 };
-local android_builder(name, image, extra_cmds=[], allow_fail=true) = {
+local apk_builder(name, image, extra_cmds=[], allow_fail=true) = {
     kind: 'pipeline',
     type: 'docker',
     name: name,
@@ -80,7 +80,7 @@ local android_builder(name, image, extra_cmds=[], allow_fail=true) = {
                 "rm -f local.properties"
                 "echo 'sdk.dir=/usr/lib/android-sdk' >> local.properties",
                 "echo 'ndk.dir=/usr/lib/android-ndk' >> local.properties",
-                "gradle assembleDebug",
+                "GRADLE_USER_HOME=/cache/gradle gradle assembleDebug",
             ] + extra_cmds
         }
     ]
@@ -178,6 +178,7 @@ local deb_builder(image, distro, distro_branch, arch='amd64', loki_repo=true) = 
     ]
 };
 
+
 // Macos build
 local mac_builder(name, build_type='Release', werror=true, cmake_extra='', extra_cmds=[], allow_fail=false) = {
     kind: 'pipeline',
@@ -272,6 +273,8 @@ local mac_builder(name, build_type='Release', werror=true, cmake_extra='', extra
     deb_builder("debian:buster", "buster", "debian/buster"),
     deb_builder("ubuntu:focal", "focal", "ubuntu/focal"),
     deb_builder("debian:sid", "sid", "debian/sid", arch='arm64'),
+    // android apk builder
+    apk_builder("android apk", "registry.oxen.rocks/lokinet-ci-android", extra_cmds=['UPLOAD_OS=anrdoid ../contrib/ci/drone-static-upload.sh']);
 
     // Macos builds:
     mac_builder('macOS (Release)'),

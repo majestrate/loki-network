@@ -98,10 +98,7 @@ namespace llarp
 
     std::vector<llarp::dns::SRVData> m_SRVRecords;
 
-    // TODO:
-    // on-up
-    // on-down
-    // on-ready
+    bool m_AllowInboundByDefault;
 
     void
     defineConfigOptions(ConfigDefinition& conf, const ConfigGenParameters& params);

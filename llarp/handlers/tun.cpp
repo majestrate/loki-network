@@ -94,11 +94,11 @@ namespace llarp
         : service::Endpoint(r, parent)
         , m_UserToNetworkPktQueue("endpoint_sendq", r->netloop(), r->netloop())
     {
-      m_PacketRouter.reset(
+      m_OutboundPacketRouter.reset(
           new vpn::PacketRouter{[&](net::IPPacket pkt) { HandleGotUserPacket(std::move(pkt)); }});
 #if ANDROID
       m_Resolver = std::make_shared<DnsHandler>(r, this);
-      m_PacketRouter->AddUDPHandler(huint16_t{53}, [&](net::IPPacket pkt) {
+      m_OutboundPacketRouter->AddUDPHandler(huint16_t{53}, [&](net::IPPacket pkt) {
         const size_t ip_header_size = (pkt.Header()->ihl * 4);
 
         const uint8_t* ptr = pkt.buf + ip_header_size;
@@ -237,6 +237,30 @@ namespace llarp
       }
        */
 
+      m_InboundPacketRouter.reset(new vpn::PacketRouter{
+          [&, allowByDefault = conf.m_AllowInboundByDefault](net::IPPacket pkt) {
+            // if we allow all by default just write the packet
+            if (allowByDefault)
+            {
+              m_NetIf->WritePacket(std::move(pkt));
+              return;
+            }
+            // if we don't allow all by default then
+            if (m_ConnTrack.HasFlowFor(pkt))
+            {
+              m_NetIf->WritePacket(std::move(pkt));
+              return;
+            }
+          }});
+
+      auto allowPacket = [&](net::IPPacket pkt) { m_NetIf->WritePacket(std::move(pkt)); };
+
+      for (const auto& srv : conf.m_SRVRecords)
+      {
+        m_InboundPacketRouter->AddTCPHandler(huint16_t{srv.port}, allowPacket);
+        m_InboundPacketRouter->AddUDPHandler(huint16_t{srv.port}, allowPacket);
+      }
+
       m_LocalResolverAddr = dnsConf.m_bind;
       m_UpstreamResolvers = dnsConf.m_upstreamDNS;
 
@@ -285,7 +309,7 @@ namespace llarp
       // flush network to user
       while (not m_NetworkToUserPktQueue.empty())
       {
-        m_NetIf->WritePacket(m_NetworkToUserPktQueue.top().pkt);
+        m_InboundPacketRouter->HandleIPPacket(m_NetworkToUserPktQueue.top().pkt);
         m_NetworkToUserPktQueue.pop();
       }
     }
@@ -817,9 +841,13 @@ namespace llarp
       m_IfName = m_NetIf->IfName();
       LogInfo(Name(), " got network interface ", m_IfName);
 
+      auto writePkt = [&](net::IPPacket pkt) {
+        m_ConnTrack.HandleIPPacket(pkt);
+        m_OutboundPacketRouter->HandleIPPacket(std::move(pkt));
+      };
+
       auto netloop = Router()->netloop();
-      if (not netloop->add_network_interface(
-              m_NetIf, [&](net::IPPacket pkt) { m_PacketRouter->HandleIPPacket(std::move(pkt)); }))
+      if (not netloop->add_network_interface(m_NetIf, writePkt))
       {
         LogError(Name(), " failed to add network interface");
         return false;
@@ -875,6 +903,7 @@ namespace llarp
     void
     TunEndpoint::Tick(llarp_time_t now)
     {
+      m_ConnTrack.Decay(now);
       Endpoint::Tick(now);
     }
 

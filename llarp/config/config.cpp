@@ -261,6 +261,7 @@ namespace llarp
     static constexpr Default ReachableDefault{true};
     static constexpr Default HopsDefault{4};
     static constexpr Default PathsDefault{6};
+    static constexpr Default PermissiveInboundDefault{false};
 
     conf.defineOption<std::string>(
         "network", "type", Default{"tun"}, Hidden, AssignmentAcceptor(m_endpointType));
@@ -599,6 +600,17 @@ namespace llarp
 
           m_SRVRecords.push_back(std::move(newSRV));
         });
+
+    conf.defineOption<bool>(
+        "network",
+        "permissive-inbound",
+        PermissiveInboundDefault,
+        ClientOnly,
+        Comment{
+            "permit inbound tcp and udp traffic inside lokinet so that not only explicitly exposed "
+            "ports are permitted",
+        },
+        AssignmentAcceptor(m_AllowInboundByDefault));
 
     // Deprecated options:
     conf.defineOption<std::string>("network", "enabled", Deprecated);

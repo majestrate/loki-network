@@ -2,12 +2,13 @@
 
 namespace llarp::vpn
 {
-  struct UDPPacketHandler : public Layer4Handler
+  struct Layer4PacketHandler : public Layer4Handler
   {
     PacketHandlerFunc m_BaseHandler;
     std::unordered_map<nuint16_t, PacketHandlerFunc> m_LocalPorts;
 
-    explicit UDPPacketHandler(PacketHandlerFunc baseHandler) : m_BaseHandler{std::move(baseHandler)}
+    explicit Layer4PacketHandler(PacketHandlerFunc baseHandler)
+        : m_BaseHandler{std::move(baseHandler)}
     {}
 
     void
@@ -67,9 +68,21 @@ namespace llarp::vpn
 
     if (m_IPProtoHandler.find(udp_proto) == m_IPProtoHandler.end())
     {
-      m_IPProtoHandler.emplace(udp_proto, std::make_unique<UDPPacketHandler>(m_BaseHandler));
+      m_IPProtoHandler.emplace(udp_proto, std::make_unique<Layer4PacketHandler>(m_BaseHandler));
     }
     m_IPProtoHandler[udp_proto]->AddSubHandler(ToNet(localport), func);
+  }
+
+  void
+  PacketRouter::AddTCPHandler(huint16_t localport, PacketHandlerFunc func)
+  {
+    constexpr byte_t tcp_proto = 0x06;
+
+    if (m_IPProtoHandler.find(tcp_proto) == m_IPProtoHandler.end())
+    {
+      m_IPProtoHandler.emplace(tcp_proto, std::make_unique<Layer4PacketHandler>(m_BaseHandler));
+    }
+    m_IPProtoHandler[tcp_proto]->AddSubHandler(ToNet(localport), func);
   }
 
   void

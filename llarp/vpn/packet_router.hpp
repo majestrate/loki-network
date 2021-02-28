@@ -38,5 +38,9 @@ namespace llarp::vpn
     /// helper that adds a udp packet handler for UDP destinted for localport
     void
     AddUDPHandler(huint16_t localport, PacketHandlerFunc func);
+
+    /// helper that adds a tcp packet handler for a tcp port
+    void
+    AddTCPHandler(huint16_t localport, PacketHandlerFunc func);
   };
 }  // namespace llarp::vpn

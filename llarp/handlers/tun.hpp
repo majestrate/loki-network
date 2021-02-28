@@ -11,6 +11,7 @@
 #include <util/codel.hpp>
 #include <util/thread/threading.hpp>
 #include <vpn/packet_router.hpp>
+#include <vpn/conn_track.hpp>
 
 #include <future>
 #include <queue>
@@ -260,7 +261,10 @@ namespace llarp
 
       std::shared_ptr<vpn::NetworkInterface> m_NetIf;
 
-      std::unique_ptr<vpn::PacketRouter> m_PacketRouter;
+      std::unique_ptr<vpn::PacketRouter> m_OutboundPacketRouter;
+      std::unique_ptr<vpn::PacketRouter> m_InboundPacketRouter;
+
+      vpn::ConnectionTracker m_ConnTrack;
     };
 
   }  // namespace handlers

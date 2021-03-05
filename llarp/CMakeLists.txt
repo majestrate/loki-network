@@ -111,8 +111,6 @@ add_library(liblokinet
 
   consensus/table.cpp
 
-  ev/vpnio.cpp
-
   bootstrap.cpp
   context.cpp
   crypto/crypto_libsodium.cpp

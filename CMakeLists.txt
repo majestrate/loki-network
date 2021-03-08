@@ -317,6 +317,7 @@ if(SUBMODULE_CHECK)
     check_submodule(external/sqlite_orm)
     check_submodule(external/oxen-mq)
     check_submodule(external/uvw)
+    check_submodule(external/ngtcp2)
   endif()
 endif()
 
@@ -328,6 +329,8 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 add_subdirectory(external/nlohmann EXCLUDE_FROM_ALL)
 add_subdirectory(external/cxxopts EXCLUDE_FROM_ALL)
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
+
+add_subdirectory(external/ngtcp2 EXCLUDE_FROM_ALL)
 
 include_directories(SYSTEM external/sqlite_orm/include)
 

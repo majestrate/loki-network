@@ -1,6 +1,7 @@
 include(Version)
 
 add_library(lokinet-util
+  STATIC
   ${CMAKE_CURRENT_BINARY_DIR}/constants/version.cpp
   util/bencode.cpp
   util/buffer.cpp
@@ -51,7 +52,8 @@ target_include_directories(uvw INTERFACE ${PROJECT_SOURCE_DIR}/external/uvw/src)
 target_link_libraries(uvw INTERFACE libuv)
 
 add_library(lokinet-platform
-# for networking
+  STATIC
+  # for networking
   ev/ev.cpp
   ev/ev_libuv.cpp
   net/ip.cpp
@@ -95,6 +97,7 @@ if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
 endif()
 
 add_library(liblokinet
+  STATIC
   config/config.cpp
   config/definition.cpp
   config/ini.cpp
@@ -233,13 +236,16 @@ target_link_libraries(liblokinet PUBLIC cxxopts lokinet-platform lokinet-util lo
 target_link_libraries(liblokinet PRIVATE libunbound)
 
 
-if(BUILD_SHARED_LIBS)
+if(BUILD_LIBLOKINET)
   include(GNUInstallDirs)
-
-  install(TARGETS lokinet-util lokinet-platform liblokinet LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  add_library(lokinet-shared SHARED lokinet_shared.cpp)
+  set_target_properties(lokinet-shared PROPERTIES OUTPUT_NAME lokinet)
+  target_link_libraries(lokinet-shared liblokinet)
+  install(TARGETS lokinet-shared LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
   if(WIN32)
-    target_link_libraries(liblokinet PUBLIC ws2_32 iphlpapi)
+    target_link_libraries(lokinet-shared PUBLIC ws2_32 iphlpapi)
   endif()
+  add_log_tag(lokinet-shared)
 endif()
 
 foreach(lokinet_lib liblokinet lokinet-platform lokinet-util lokinet-cryptography)
@@ -247,5 +253,5 @@ foreach(lokinet_lib liblokinet lokinet-platform lokinet-util lokinet-cryptograph
 endforeach()
 
 file(GLOB_RECURSE docs_SRC */*.hpp *.hpp)
-  
+
 set(DOCS_SRC ${docs_SRC} PARENT_SCOPE)

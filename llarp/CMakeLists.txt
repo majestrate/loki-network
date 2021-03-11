@@ -7,6 +7,7 @@ add_library(lokinet-util
   util/fs.cpp
   util/json.cpp
   util/logging/android_logger.cpp
+  util/logging/buffer.cpp
   util/logging/file_logger.cpp
   util/logging/json_logger.cpp
   util/logging/logger.cpp

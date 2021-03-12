@@ -118,6 +118,8 @@ namespace llarp
 
     std::vector<llarp::dns::SRVData> m_SRVRecords;
 
+    std::unordered_set<uint16_t> m_quicServerPorts;
+
     // TODO:
     // on-up
     // on-down

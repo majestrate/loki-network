@@ -201,7 +201,6 @@ namespace llarp
           other->FlushDownstream(r);
         }
         m_FlushOthers.clear();
-        r->loop()->wakeup();
       }
       else
       {
@@ -216,8 +215,8 @@ namespace llarp
               info.upstream);
           r->SendToOrQueue(info.upstream, &msg);
         }
-        r->linkManager().PumpLinks();
       }
+      r->loop()->wakeup();
     }
 
     void

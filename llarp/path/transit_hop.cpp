@@ -216,6 +216,7 @@ namespace llarp
               info.upstream);
           r->SendToOrQueue(info.upstream, &msg);
         }
+        r->outboundMessageHandler().Tick();
         r->linkManager().PumpLinks();
       }
     }

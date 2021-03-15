@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <llarp/net/net.hpp>
+#include <variant>
 // harmless on other platforms
 #define __USE_MINGW_ANSI_STDIO 1
 #include "tun.hpp"
@@ -295,32 +296,6 @@ namespace llarp
       return msg.questions[0].IsLocalhost();
     }
 
-    template <>
-    bool
-    TunEndpoint::FindAddrForIP(service::Address& addr, huint128_t ip)
-    {
-      auto itr = m_IPToAddr.find(ip);
-      if (itr != m_IPToAddr.end() and not m_SNodes[itr->second])
-      {
-        addr = service::Address(itr->second.as_array());
-        return true;
-      }
-      return false;
-    }
-
-    template <>
-    bool
-    TunEndpoint::FindAddrForIP(RouterID& addr, huint128_t ip)
-    {
-      auto itr = m_IPToAddr.find(ip);
-      if (itr != m_IPToAddr.end() and m_SNodes[itr->second])
-      {
-        addr = RouterID(itr->second.as_array());
-        return true;
-      }
-      return false;
-    }
-
     static dns::Message&
     clear_dns_message(dns::Message& msg)
     {
@@ -331,13 +306,25 @@ namespace llarp
       return msg;
     }
 
+    std::optional<std::variant<service::Address, RouterID>>
+    TunEndpoint::ObtainAddrForIP(huint128_t ip) const
+    {
+      auto itr = m_IPToAddr.find(ip);
+      if (itr == m_IPToAddr.end())
+        return std::nullopt;
+      if (m_SNodes.at(itr->second))
+        return RouterID{itr->second.as_array()};
+      else
+        return service::Address{itr->second.as_array()};
+    }
+
     bool
     TunEndpoint::HandleHookedDNSMessage(dns::Message msg, std::function<void(dns::Message)> reply)
     {
       auto ReplyToSNodeDNSWhenReady = [self = this, reply = reply](
                                           RouterID snode, auto msg, bool isV6) -> bool {
         return self->EnsurePathToSNode(snode, [=](const RouterID&, exit::BaseSession_ptr s) {
-          self->SendDNSReply(snode, s, msg, reply, true, isV6);
+          self->SendDNSReply(snode, s, msg, reply, isV6);
         });
       };
       auto ReplyToLokiDNSWhenReady = [self = this, reply = reply](
@@ -347,7 +334,7 @@ namespace llarp
         return self->EnsurePathToService(
             addr,
             [=](const Address&, OutboundContext* ctx) {
-              self->SendDNSReply(addr, ctx, msg, reply, false, isV6);
+              self->SendDNSReply(addr, ctx, msg, reply, isV6);
             },
             2s);
       };
@@ -649,17 +636,10 @@ namespace llarp
           reply(msg);
           return true;
         }
-        RouterID snodeAddr;
-        if (FindAddrForIP(snodeAddr, ip))
+
+        if (auto maybe = ObtainAddrForIP(ip))
         {
-          msg.AddAReply(snodeAddr.ToString());
-          reply(msg);
-          return true;
-        }
-        service::Address lokiAddr;
-        if (FindAddrForIP(lokiAddr, ip))
-        {
-          msg.AddAReply(lokiAddr.ToString());
+          std::visit([&msg](auto&& result) { msg.AddAReply(result.ToString()); }, *maybe);
           reply(msg);
           return true;
         }
@@ -1022,9 +1002,12 @@ namespace llarp
       if (t != service::ProtocolType::TrafficV4 && t != service::ProtocolType::TrafficV6
           && t != service::ProtocolType::Exit)
         return false;
-      AlignedBuffer<32> addr;
-      bool snode = false;
-      if (!GetEndpointWithConvoTag(tag, addr, snode))
+      std::variant<service::Address, RouterID> addr;
+      if (auto maybe = GetEndpointWithConvoTag(tag))
+      {
+        addr = *maybe;
+      }
+      else
         return false;
       huint128_t src, dst;
 
@@ -1035,7 +1018,7 @@ namespace llarp
       if (m_state->m_ExitEnabled)
       {
         // exit side from exit
-        src = ObtainIPForAddr(addr, snode);
+        src = ObtainIPForAddr(addr);
         if (t == service::ProtocolType::Exit)
         {
           if (pkt.IsV4())
@@ -1067,16 +1050,22 @@ namespace llarp
         }
         // find what exit we think this should be for
         const auto mapped = m_ExitMap.FindAll(src);
-        if (mapped.count(service::Address{addr}) == 0 or IsBogon(src))
-        {
-          // we got exit traffic from someone who we should not have gotten it from
+        if (IsBogon(src))
           return false;
+
+        if (const auto ptr = std::get_if<service::Address>(&addr))
+        {
+          if (mapped.count(*ptr) == 0)
+          {
+            // we got exit traffic from someone who we should not have gotten it from
+            return false;
+          }
         }
       }
       else
       {
         // snapp traffic
-        src = ObtainIPForAddr(addr, snode);
+        src = ObtainIPForAddr(addr);
         dst = m_OurIP;
       }
       HandleWriteIPPacket(buf, src, dst, seqno);
@@ -1115,10 +1104,20 @@ namespace llarp
     }
 
     huint128_t
-    TunEndpoint::ObtainIPForAddr(const AlignedBuffer<32>& ident, bool snode)
+    TunEndpoint::ObtainIPForAddr(std::variant<service::Address, RouterID> addr)
     {
       llarp_time_t now = Now();
       huint128_t nextIP = {0};
+      AlignedBuffer<32> ident{};
+      bool snode = false;
+
+      std::visit([&ident](auto&& val) { ident = val.data(); }, addr);
+
+      if (std::get_if<RouterID>(&addr))
+      {
+        snode = true;
+      }
+
       {
         // previously allocated address
         auto itr = m_AddrToIP.find(ident);

@@ -9,6 +9,7 @@
 #include <llarp/util/meta/memfn.hpp>
 
 #include "endpoint_util.hpp"
+#include "service/protocol_type.hpp"
 
 #include <random>
 #include <algorithm>
@@ -603,9 +604,9 @@ namespace llarp
     }
 
     void
-    OutboundContext::SendPacketToRemote(const llarp_buffer_t& buf)
+    OutboundContext::SendPacketToRemote(const llarp_buffer_t& buf, service::ProtocolType t)
     {
-      AsyncEncryptAndSendTo(buf, ProtocolType::Exit);
+      AsyncEncryptAndSendTo(buf, t);
     }
 
   }  // namespace service

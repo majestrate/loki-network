@@ -952,8 +952,9 @@ namespace llarp
           sendFunc = std::bind(
               &TunEndpoint::SendToSNodeOrQueue,
               this,
-              itr->second.as_array(),
-              std::placeholders::_1);
+              RouterID{itr->second.as_array()},
+              std::placeholders::_1,
+              service::ProtocolType::TrafficV4);
         }
         else if (m_state->m_ExitEnabled and src != m_OurIP)
         {
@@ -961,7 +962,7 @@ namespace llarp
           sendFunc = std::bind(
               &TunEndpoint::SendToServiceOrQueue,
               this,
-              service::Address(itr->second.as_array()),
+              service::Address{itr->second.as_array()},
               std::placeholders::_1,
               service::ProtocolType::Exit);
         }
@@ -970,7 +971,7 @@ namespace llarp
           sendFunc = std::bind(
               &TunEndpoint::SendToServiceOrQueue,
               this,
-              service::Address(itr->second.as_array()),
+              service::Address{itr->second.as_array()},
               std::placeholders::_1,
               pkt.ServiceProtocol());
         }

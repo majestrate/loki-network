@@ -21,6 +21,7 @@
 #include <llarp/util/compare_ptr.hpp>
 #include <optional>
 #include <unordered_map>
+#include <variant>
 #include "endpoint_types.hpp"
 
 #include "auth.hpp"
@@ -92,7 +93,7 @@ namespace llarp
       GetIfName() const = 0;
 
       std::optional<ConvoTag>
-      GetBestConvoTagForService(Address addr) const;
+      GetBestConvoTagFor(std::variant<Address, RouterID> addr) const;
 
       /// inject vpn io
       /// return false if not supported

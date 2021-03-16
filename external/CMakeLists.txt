@@ -48,5 +48,5 @@ target_link_libraries(sqlite_orm INTERFACE sqlite3)
 add_library(uvw INTERFACE)
 target_include_directories(uvw INTERFACE uvw/src)
 target_link_libraries(uvw INTERFACE libuv)
-
+add_definitions(-D_GNU_SOURCE)
 add_subdirectory(ngtcp2 EXCLUDE_FROM_ALL)

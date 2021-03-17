@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <llarp/net/net.hpp>
+#include <variant>
 // harmless on other platforms
 #define __USE_MINGW_ANSI_STDIO 1
 #include "tun.hpp"
@@ -61,8 +62,8 @@ namespace llarp
         hdr->ttl = 64;
         hdr->frag_off = htons(0b0100000000000000);
 
-        hdr->saddr = from.getIPv4();
-        hdr->daddr = to.getIPv4();
+        hdr->saddr = from.getIPv4().n;
+        hdr->daddr = to.getIPv4().n;
 
         // make udp packet
         uint8_t* ptr = pkt.buf + 20;
@@ -98,8 +99,8 @@ namespace llarp
         const uint8_t* ptr = pkt.buf + ip_header_size;
         const auto dst = ToNet(pkt.dstv4());
         const auto src = ToNet(pkt.srcv4());
-        const SockAddr laddr{src.n, *reinterpret_cast<const uint16_t*>(ptr)};
-        const SockAddr raddr{dst.n, *reinterpret_cast<const uint16_t*>(ptr + 2)};
+        const SockAddr laddr{src, nuint16_t{*reinterpret_cast<const uint16_t*>(ptr)}};
+        const SockAddr raddr{dst, nuint16_t{*reinterpret_cast<const uint16_t*>(ptr + 2)}};
 
         OwnedBuffer buf{pkt.sz - (udp_header_size + ip_header_size)};
         std::copy_n(ptr + udp_header_size, buf.sz, buf.buf.get());
@@ -295,32 +296,6 @@ namespace llarp
       return msg.questions[0].IsLocalhost();
     }
 
-    template <>
-    bool
-    TunEndpoint::FindAddrForIP(service::Address& addr, huint128_t ip)
-    {
-      auto itr = m_IPToAddr.find(ip);
-      if (itr != m_IPToAddr.end() and not m_SNodes[itr->second])
-      {
-        addr = service::Address(itr->second.as_array());
-        return true;
-      }
-      return false;
-    }
-
-    template <>
-    bool
-    TunEndpoint::FindAddrForIP(RouterID& addr, huint128_t ip)
-    {
-      auto itr = m_IPToAddr.find(ip);
-      if (itr != m_IPToAddr.end() and m_SNodes[itr->second])
-      {
-        addr = RouterID(itr->second.as_array());
-        return true;
-      }
-      return false;
-    }
-
     static dns::Message&
     clear_dns_message(dns::Message& msg)
     {
@@ -331,14 +306,28 @@ namespace llarp
       return msg;
     }
 
+    std::optional<std::variant<service::Address, RouterID>>
+    TunEndpoint::ObtainAddrForIP(huint128_t ip) const
+    {
+      auto itr = m_IPToAddr.find(ip);
+      if (itr == m_IPToAddr.end())
+        return std::nullopt;
+      if (m_SNodes.at(itr->second))
+        return RouterID{itr->second.as_array()};
+      else
+        return service::Address{itr->second.as_array()};
+    }
+
     bool
     TunEndpoint::HandleHookedDNSMessage(dns::Message msg, std::function<void(dns::Message)> reply)
     {
       auto ReplyToSNodeDNSWhenReady = [self = this, reply = reply](
                                           RouterID snode, auto msg, bool isV6) -> bool {
-        return self->EnsurePathToSNode(snode, [=](const RouterID&, exit::BaseSession_ptr s) {
-          self->SendDNSReply(snode, s, msg, reply, true, isV6);
-        });
+        return self->EnsurePathToSNode(
+            snode,
+            [=](const RouterID&, exit::BaseSession_ptr s, [[maybe_unused]] service::ConvoTag tag) {
+              self->SendDNSReply(snode, s, msg, reply, isV6);
+            });
       };
       auto ReplyToLokiDNSWhenReady = [self = this, reply = reply](
                                          service::Address addr, auto msg, bool isV6) -> bool {
@@ -347,7 +336,7 @@ namespace llarp
         return self->EnsurePathToService(
             addr,
             [=](const Address&, OutboundContext* ctx) {
-              self->SendDNSReply(addr, ctx, msg, reply, false, isV6);
+              self->SendDNSReply(addr, ctx, msg, reply, isV6);
             },
             2s);
       };
@@ -649,17 +638,10 @@ namespace llarp
           reply(msg);
           return true;
         }
-        RouterID snodeAddr;
-        if (FindAddrForIP(snodeAddr, ip))
+
+        if (auto maybe = ObtainAddrForIP(ip))
         {
-          msg.AddAReply(snodeAddr.ToString());
-          reply(msg);
-          return true;
-        }
-        service::Address lokiAddr;
-        if (FindAddrForIP(lokiAddr, ip))
-        {
-          msg.AddAReply(lokiAddr.ToString());
+          std::visit([&msg](auto&& result) { msg.AddAReply(result.ToString()); }, *maybe);
           reply(msg);
           return true;
         }
@@ -925,7 +907,7 @@ namespace llarp
           {
             (void)ip;
             SendToServiceOrQueue(
-                service::Address{addr.as_array()}, pkt.ConstBuffer(), service::eProtocolExit);
+                service::Address{addr.as_array()}, pkt.ConstBuffer(), service::ProtocolType::Exit);
           }
           return;
         }
@@ -960,7 +942,7 @@ namespace llarp
                   {
                     ctx->sendTimeout = 5s;
                   }
-                  self->SendToServiceOrQueue(addr, pkt.ConstBuffer(), service::eProtocolExit);
+                  self->SendToServiceOrQueue(addr, pkt.ConstBuffer(), service::ProtocolType::Exit);
                 },
                 1s);
           }
@@ -972,8 +954,9 @@ namespace llarp
           sendFunc = std::bind(
               &TunEndpoint::SendToSNodeOrQueue,
               this,
-              itr->second.as_array(),
-              std::placeholders::_1);
+              RouterID{itr->second.as_array()},
+              std::placeholders::_1,
+              service::ProtocolType::TrafficV4);
         }
         else if (m_state->m_ExitEnabled and src != m_OurIP)
         {
@@ -981,16 +964,16 @@ namespace llarp
           sendFunc = std::bind(
               &TunEndpoint::SendToServiceOrQueue,
               this,
-              service::Address(itr->second.as_array()),
+              service::Address{itr->second.as_array()},
               std::placeholders::_1,
-              service::eProtocolExit);
+              service::ProtocolType::Exit);
         }
         else
         {
           sendFunc = std::bind(
               &TunEndpoint::SendToServiceOrQueue,
               this,
-              service::Address(itr->second.as_array()),
+              service::Address{itr->second.as_array()},
               std::placeholders::_1,
               pkt.ServiceProtocol());
         }
@@ -1019,12 +1002,15 @@ namespace llarp
         service::ProtocolType t,
         uint64_t seqno)
     {
-      if (t != service::eProtocolTrafficV4 && t != service::eProtocolTrafficV6
-          && t != service::eProtocolExit)
+      if (t != service::ProtocolType::TrafficV4 && t != service::ProtocolType::TrafficV6
+          && t != service::ProtocolType::Exit)
         return false;
-      AlignedBuffer<32> addr;
-      bool snode = false;
-      if (!GetEndpointWithConvoTag(tag, addr, snode))
+      std::variant<service::Address, RouterID> addr;
+      if (auto maybe = GetEndpointWithConvoTag(tag))
+      {
+        addr = *maybe;
+      }
+      else
         return false;
       huint128_t src, dst;
 
@@ -1035,8 +1021,8 @@ namespace llarp
       if (m_state->m_ExitEnabled)
       {
         // exit side from exit
-        src = ObtainIPForAddr(addr, snode);
-        if (t == service::eProtocolExit)
+        src = ObtainIPForAddr(addr);
+        if (t == service::ProtocolType::Exit)
         {
           if (pkt.IsV4())
             dst = pkt.dst4to6();
@@ -1052,7 +1038,7 @@ namespace llarp
           dst = m_OurIP;
         }
       }
-      else if (t == service::eProtocolExit)
+      else if (t == service::ProtocolType::Exit)
       {
         // client side exit traffic from exit
         if (pkt.IsV4())
@@ -1067,16 +1053,22 @@ namespace llarp
         }
         // find what exit we think this should be for
         const auto mapped = m_ExitMap.FindAll(src);
-        if (mapped.count(service::Address{addr}) == 0 or IsBogon(src))
-        {
-          // we got exit traffic from someone who we should not have gotten it from
+        if (IsBogon(src))
           return false;
+
+        if (const auto ptr = std::get_if<service::Address>(&addr))
+        {
+          if (mapped.count(*ptr) == 0)
+          {
+            // we got exit traffic from someone who we should not have gotten it from
+            return false;
+          }
         }
       }
       else
       {
         // snapp traffic
-        src = ObtainIPForAddr(addr, snode);
+        src = ObtainIPForAddr(addr);
         dst = m_OurIP;
       }
       HandleWriteIPPacket(buf, src, dst, seqno);
@@ -1115,10 +1107,20 @@ namespace llarp
     }
 
     huint128_t
-    TunEndpoint::ObtainIPForAddr(const AlignedBuffer<32>& ident, bool snode)
+    TunEndpoint::ObtainIPForAddr(std::variant<service::Address, RouterID> addr)
     {
       llarp_time_t now = Now();
       huint128_t nextIP = {0};
+      AlignedBuffer<32> ident{};
+      bool snode = false;
+
+      std::visit([&ident](auto&& val) { ident = val.data(); }, addr);
+
+      if (std::get_if<RouterID>(&addr))
+      {
+        snode = true;
+      }
+
       {
         // previously allocated address
         auto itr = m_AddrToIP.find(ident);

@@ -3,7 +3,7 @@
 #include <llarp/crypto/types.hpp>
 #include <llarp/path/path.hpp>
 #include "intro_set.hpp"
-#include <llarp/util/aligned.hpp>
+#include "convotag.hpp"
 
 #include <memory>
 #include <set>
@@ -12,7 +12,6 @@ namespace llarp
 {
   namespace service
   {
-    using ConvoTag = AlignedBuffer<16>;
     struct ProtocolMessage;
 
     struct RecvDataEvent
@@ -79,17 +78,3 @@ namespace llarp
     };
   }  // namespace service
 }  // namespace llarp
-
-namespace std
-{
-  template <>
-  struct hash<llarp::service::ConvoTag>
-  {
-    size_t
-    operator()(const llarp::service::ConvoTag& tag) const
-    {
-      std::hash<std::string_view> h{};
-      return h(std::string_view{reinterpret_cast<const char*>(tag.data()), tag.size()});
-    }
-  };
-}  // namespace std

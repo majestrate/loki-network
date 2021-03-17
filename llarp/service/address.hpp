@@ -8,6 +8,7 @@
 #include <numeric>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <set>
 
 namespace llarp
@@ -89,16 +90,10 @@ namespace llarp
       {
         return RouterID(as_array());
       }
-
-      struct Hash
-      {
-        size_t
-        operator()(const Address& buf) const
-        {
-          return std::accumulate(buf.begin(), buf.end(), 0, std::bit_xor<size_t>());
-        }
-      };
     };
+
+    std::optional<std::variant<Address, RouterID>>
+    ParseAddress(std::string_view lokinet_addr);
 
   }  // namespace service
 }  // namespace llarp
@@ -111,7 +106,7 @@ namespace std
     size_t
     operator()(const llarp::service::Address& addr) const
     {
-      return llarp::service::Address::Hash{}(addr);
+      return std::accumulate(addr.begin(), addr.end(), 0, std::bit_xor{});
     }
   };
 }  // namespace std

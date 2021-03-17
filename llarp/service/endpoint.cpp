@@ -19,16 +19,27 @@
 #include "endpoint_state.hpp"
 #include "endpoint_util.hpp"
 #include "hidden_service_address_lookup.hpp"
+#include "net/ip.hpp"
 #include "outbound_context.hpp"
 #include "protocol.hpp"
+#include "service/info.hpp"
+#include "service/protocol_type.hpp"
 #include <llarp/util/str.hpp>
 #include <llarp/util/buffer.hpp>
 #include <llarp/util/meta/memfn.hpp>
 #include <llarp/hook/shell.hpp>
 #include <llarp/link/link_manager.hpp>
 #include <llarp/tooling/dht_event.hpp>
+#include <llarp/quic/server.hpp>
 
+#include <optional>
 #include <utility>
+
+#include <llarp/quic/server.hpp>
+#include <llarp/quic/tunnel.hpp>
+#include <llarp/ev/ev_libuv.hpp>
+#include <uvw.hpp>
+#include <variant>
 
 namespace llarp
 {
@@ -71,6 +82,63 @@ namespace llarp
           auth = itr->second;
         m_StartupLNSMappings[name] = std::make_pair(range, auth);
       });
+
+      auto loop = uv::Loop::MaybeGetLoop(Router()->loop());
+      auto callback = [this, loop, ports = conf.m_quicServerPorts](
+                          quic::Server& serv, quic::Stream& stream, uint16_t port) {
+        if (ports.count(port) == 0)
+        {
+          return false;
+        }
+
+        stream.close_callback = [](quic::Stream& st,
+                                   [[maybe_unused]] std::optional<uint64_t> errcode) {
+          auto tcp = st.data<uvw::TCPHandle>();
+          if (tcp)
+            tcp->close();
+        };
+
+        auto localIP = net::TruncateV6(GetIfAddr());
+
+        std::string localhost = localIP.ToString();
+
+        auto tcp = loop->resource<uvw::TCPHandle>();
+        auto error_handler = tcp->once<uvw::ErrorEvent>(
+            [&stream, localhost, port](const uvw::ErrorEvent&, uvw::TCPHandle&) {
+              LogWarn("Failed to connect to ", localhost, ":", port, ", shutting down quic stream");
+              stream.close(quic::tunnel::ERROR_CONNECT);
+            });
+        tcp->once<uvw::ConnectEvent>(
+            [streamw = stream.weak_from_this(), error_handler = std::move(error_handler)](
+                const uvw::ConnectEvent&, uvw::TCPHandle& tcp) {
+              auto peer = tcp.peer();
+              auto stream = streamw.lock();
+              if (!stream)
+              {
+                LogWarn(
+                    "Connected to ",
+                    peer.ip,
+                    ":",
+                    peer.port,
+                    " but quic stream has gone away; resetting local connection");
+                tcp.closeReset();
+                return;
+              }
+              LogDebug("Connected to ", peer.ip, ":", peer.port, " for quic ", stream->id());
+              tcp.erase(error_handler);
+              quic::tunnel::install_stream_forwarding(tcp, *stream);
+              assert(stream->used() == 0);
+
+              stream->append_buffer(new std::byte[1]{quic::tunnel::CONNECT_INIT}, 1);
+              tcp.read();
+            });
+
+        tcp->connect(localhost, port);
+
+        return true;
+      };
+
+      m_QuicServer = std::make_shared<quic::Server>(this, loop, callback);
 
       return m_state->Configure(conf);
     }
@@ -145,29 +213,23 @@ namespace llarp
       return routers.find(remote) != routers.end();
     }
 
-    bool
-    Endpoint::GetEndpointWithConvoTag(
-        const ConvoTag tag, llarp::AlignedBuffer<32>& addr, bool& snode) const
+    std::optional<std::variant<Address, RouterID>>
+    Endpoint::GetEndpointWithConvoTag(ConvoTag tag) const
     {
       auto itr = Sessions().find(tag);
       if (itr != Sessions().end())
       {
-        snode = false;
-        addr = itr->second.remote.Addr();
-        return true;
+        return itr->second.remote.Addr();
       }
 
       for (const auto& item : m_state->m_SNodeSessions)
       {
         if (item.second.second == tag)
         {
-          snode = true;
-          addr = item.first;
-          return true;
+          return item.first;
         }
       }
-
-      return false;
+      return std::nullopt;
     }
 
     bool
@@ -958,14 +1020,14 @@ namespace llarp
     bool
     Endpoint::ProcessDataMessage(std::shared_ptr<ProtocolMessage> msg)
     {
-      if ((msg->proto == eProtocolExit
+      if ((msg->proto == ProtocolType::Exit
            && (m_state->m_ExitEnabled || m_ExitMap.ContainsValue(msg->sender.Addr())))
-          || msg->proto == eProtocolTrafficV4 || msg->proto == eProtocolTrafficV6)
+          || msg->proto == ProtocolType::TrafficV4 || msg->proto == ProtocolType::TrafficV6)
       {
         m_InboundTrafficQueue.tryPushBack(std::move(msg));
         return true;
       }
-      if (msg->proto == eProtocolControl)
+      if (msg->proto == ProtocolType::Control)
       {
         // TODO: implement me (?)
         // right now it's just random noise
@@ -1014,7 +1076,7 @@ namespace llarp
         msg.PutBuffer(reason);
         f.N.Randomize();
         f.C.Zero();
-        msg.proto = eProtocolAuth;
+        msg.proto = ProtocolType::Auth;
         if (not GetReplyIntroFor(tag, msg.introReply))
         {
           LogError("Failed to send auth reply: no reply intro");
@@ -1242,7 +1304,7 @@ namespace llarp
         // some day :DDDDD
         tag.Randomize();
         const auto src = xhtonl(net::TruncateV6(GetIfAddr()));
-        const auto dst = xhtonl(net::TruncateV6(ObtainIPForAddr(snode, true)));
+        const auto dst = xhtonl(net::TruncateV6(ObtainIPForAddr(snode)));
 
         auto session = std::make_shared<exit::SNodeSession>(
             snode,
@@ -1252,7 +1314,7 @@ namespace llarp
                 return false;
               pkt.UpdateIPv4Address(src, dst);
               /// TODO: V6
-              return HandleInboundPacket(tag, pkt.ConstBuffer(), eProtocolTrafficV4, 0);
+              return HandleInboundPacket(tag, pkt.ConstBuffer(), ProtocolType::TrafficV4, 0);
             },
             Router(),
             numDesiredPaths,
@@ -1268,10 +1330,10 @@ namespace llarp
       while (itr != range.second)
       {
         if (itr->second.first->IsReady())
-          h(snode, itr->second.first);
+          h(snode, itr->second.first, itr->second.second);
         else
         {
-          itr->second.first->AddReadyHook(std::bind(h, snode, _1));
+          itr->second.first->AddReadyHook(std::bind(h, snode, _1, itr->second.second));
           itr->second.first->BuildOne();
         }
         ++itr;
@@ -1280,45 +1342,58 @@ namespace llarp
     }
 
     bool
-    Endpoint::SendToSNodeOrQueue(const RouterID& addr, const llarp_buffer_t& buf)
+    Endpoint::SendTo(ConvoTag tag, const llarp_buffer_t& pkt, ProtocolType t)
+    {
+      if (auto maybe = GetEndpointWithConvoTag(tag))
+      {
+        auto addr = *maybe;
+        if (auto ptr = std::get_if<Address>(&addr))
+        {
+          return SendToServiceOrQueue(*ptr, pkt, t);
+        }
+        if (auto ptr = std::get_if<RouterID>(&addr))
+        {
+          return SendToSNodeOrQueue(*ptr, pkt, t);
+        }
+      }
+      return false;
+    }
+
+    bool
+    Endpoint::SendToSNodeOrQueue(const RouterID& addr, const llarp_buffer_t& buf, ProtocolType t)
     {
       auto pkt = std::make_shared<net::IPPacket>();
       if (!pkt->Load(buf))
         return false;
-      EnsurePathToSNode(addr, [pkt](RouterID, exit::BaseSession_ptr s) {
-        if (s)
-          s->QueueUpstreamTraffic(*pkt, routing::ExitPadSize);
-      });
+      EnsurePathToSNode(
+          addr, [pkt, t](RouterID, exit::BaseSession_ptr s, [[maybe_unused]] ConvoTag tag) {
+            if (s)
+              s->SendPacketToRemote(pkt->ConstBuffer(), t);
+          });
       return true;
     }
 
     void Endpoint::Pump(llarp_time_t)
     {
-      const auto& sessions = m_state->m_SNodeSessions;
-      auto& queue = m_InboundTrafficQueue;
+      FlushRecvData();
+      // send downstream packets to user for snode
+      for (const auto& [router, session] : m_state->m_SNodeSessions)
+        session.first->FlushDownstream();
+      // send downstream traffic to user for hidden service
+      while (not m_InboundTrafficQueue.empty())
+      {
+        auto msg = m_InboundTrafficQueue.popFront();
+        const llarp_buffer_t buf(msg->payload);
+        HandleInboundPacket(msg->tag, buf, msg->proto, msg->seqno);
+      }
 
-      auto epPump = [&]() {
-        FlushRecvData();
-        // send downstream packets to user for snode
-        for (const auto& item : sessions)
-          item.second.first->FlushDownstream();
-        // send downstream traffic to user for hidden service
-        while (not queue.empty())
-        {
-          auto msg = queue.popFront();
-          const llarp_buffer_t buf(msg->payload);
-          HandleInboundPacket(msg->tag, buf, msg->proto, msg->seqno);
-        }
-      };
-
-      epPump();
       auto router = Router();
       // TODO: locking on this container
-      for (const auto& item : m_state->m_RemoteSessions)
-        item.second->FlushUpstream();
+      for (const auto& [addr, outctx] : m_state->m_RemoteSessions)
+        outctx->FlushUpstream();
       // TODO: locking on this container
-      for (const auto& item : sessions)
-        item.second.first->FlushUpstream();
+      for (const auto& [router, session] : m_state->m_SNodeSessions)
+        session.first->FlushUpstream();
 
       // send queue flush
       while (not m_SendQueue.empty())
@@ -1332,32 +1407,71 @@ namespace llarp
       router->linkManager().PumpLinks();
     }
 
-    bool
-    Endpoint::EnsureConvo(
-        const AlignedBuffer<32> /*addr*/, bool snode, ConvoEventListener_ptr /*ev*/)
-    {
-      if (snode)
-      {}
-
-      // TODO: something meaningful
-      return false;
-    }
-
     std::optional<ConvoTag>
-    Endpoint::GetBestConvoTagForService(Address remote) const
+    Endpoint::GetBestConvoTagFor(std::variant<Address, RouterID> remote) const
     {
-      llarp_time_t time = 0s;
-      std::optional<ConvoTag> ret = std::nullopt;
       // get convotag with higest timestamp
-      for (const auto& [tag, session] : Sessions())
+      if (auto ptr = std::get_if<Address>(&remote))
       {
-        if (session.remote.Addr() == remote and session.lastUsed > time)
+        llarp_time_t time = 0s;
+        std::optional<ConvoTag> ret = std::nullopt;
+        for (const auto& [tag, session] : Sessions())
         {
-          time = session.lastUsed;
-          ret = tag;
+          if (session.remote.Addr() == *ptr and session.lastUsed > time)
+          {
+            time = session.lastUsed;
+            ret = tag;
+          }
+        }
+        return ret;
+      }
+      if (auto ptr = std::get_if<RouterID>(&remote))
+      {
+        for (const auto& item : m_state->m_SNodeSessions)
+        {
+          if (item.first == *ptr)
+            return item.second.second;
         }
       }
-      return ret;
+      return std::nullopt;
+    }
+
+    bool
+    Endpoint::EnsurePathTo(
+        std::variant<Address, RouterID> addr,
+        std::function<void(std::optional<ConvoTag>)> hook,
+        llarp_time_t timeout)
+    {
+      if (auto ptr = std::get_if<Address>(&addr))
+      {
+        return EnsurePathToService(
+            *ptr,
+            [hook](auto, auto* ctx) {
+              if (ctx)
+              {
+                hook(ctx->currentConvoTag);
+              }
+              else
+              {
+                hook(std::nullopt);
+              }
+            },
+            timeout);
+      }
+      if (auto ptr = std::get_if<RouterID>(&addr))
+      {
+        return EnsurePathToSNode(*ptr, [hook](auto, auto session, auto tag) {
+          if (session)
+          {
+            hook(tag);
+          }
+          else
+          {
+            hook(std::nullopt);
+          }
+        });
+      }
+      return false;
     }
 
     bool
@@ -1375,7 +1489,7 @@ namespace llarp
         ProtocolFrame& f = transfer->T;
         f.R = 0;
         std::shared_ptr<path::Path> p;
-        if (const auto maybe = GetBestConvoTagForService(remote))
+        if (const auto maybe = GetBestConvoTagFor(remote))
         {
           // the remote guy's intro
           Introduction remoteIntro;

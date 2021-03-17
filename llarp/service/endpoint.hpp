@@ -11,11 +11,16 @@
 #include "identity.hpp"
 #include "pendingbuffer.hpp"
 #include "protocol.hpp"
+#include "quic/server.hpp"
 #include "sendcontext.hpp"
+#include "service/protocol_type.hpp"
 #include "session.hpp"
 #include "lookup.hpp"
 #include <llarp/hook/ihook.hpp>
 #include <llarp/util/compare_ptr.hpp>
+#include <optional>
+#include <unordered_map>
+#include <variant>
 #include "endpoint_types.hpp"
 
 #include "auth.hpp"
@@ -33,29 +38,6 @@ namespace llarp
     struct Context;
     struct EndpointState;
     struct OutboundContext;
-
-    struct IConvoEventListener
-    {
-      ~IConvoEventListener() = default;
-
-      /// called when we have obtained the introset
-      /// called with nullptr on not found or when we
-      /// talking to a snode
-      virtual void
-      FoundIntroSet(const IntroSet*) = 0;
-
-      /// called when we found the RC we need for alignment
-      virtual void
-      FoundRC(const RouterContact) = 0;
-
-      /// called when we have successfully built an aligned path
-      virtual void GotAlignedPath(path::Path_ptr) = 0;
-
-      /// called when we have established a session or conversation
-      virtual void
-      MadeConvo(const ConvoTag) = 0;
-    };
-    using ConvoEventListener_ptr = std::shared_ptr<IConvoEventListener>;
 
     /// minimum interval for publishing introsets
     static constexpr auto INTROSET_PUBLISH_INTERVAL =
@@ -110,7 +92,7 @@ namespace llarp
       GetIfName() const = 0;
 
       std::optional<ConvoTag>
-      GetBestConvoTagForService(Address addr) const;
+      GetBestConvoTagFor(std::variant<Address, RouterID> addr) const;
 
       /// get our ifaddr if it is set
       virtual huint128_t
@@ -174,8 +156,11 @@ namespace llarp
       void
       SetAuthInfoForEndpoint(Address remote, AuthInfo info);
 
-      virtual huint128_t
-      ObtainIPForAddr(const AlignedBuffer<32>& addr, bool serviceNode) = 0;
+      virtual huint128_t ObtainIPForAddr(std::variant<Address, RouterID>) = 0;
+
+      /// get a key for ip address
+      virtual std::optional<std::variant<service::Address, RouterID>>
+      ObtainAddrForIP(huint128_t ip) const = 0;
 
       // virtual bool
       // HasServiceAddress(const AlignedBuffer< 32 >& addr) const = 0;
@@ -239,9 +224,6 @@ namespace llarp
       HandlePathBuilt(path::Path_ptr path) override;
 
       bool
-      EnsureConvo(const AlignedBuffer<32> addr, bool snode, ConvoEventListener_ptr ev);
-
-      bool
       SendTo(ConvoTag tag, const llarp_buffer_t& pkt, ProtocolType t);
 
       bool
@@ -270,19 +252,21 @@ namespace llarp
       void
       BlacklistSNode(const RouterID snode) override;
 
-      /// return true if we have a convotag as an exit session
-      /// or as a hidden service session
-      /// set addr and issnode
-      ///
-      /// return false if we don't have either
-      bool
-      GetEndpointWithConvoTag(const ConvoTag t, AlignedBuffer<32>& addr, bool& issnode) const;
+      /// maybe get an endpoint variant given its convo tag
+      std::optional<std::variant<Address, RouterID>>
+      GetEndpointWithConvoTag(ConvoTag t) const;
 
       bool
       HasConvoTag(const ConvoTag& t) const override;
 
       bool
       ShouldBuildMore(llarp_time_t now) const override;
+
+      bool
+      EnsurePathTo(
+          std::variant<Address, RouterID> addr,
+          std::function<void(std::optional<ConvoTag>)> hook,
+          llarp_time_t timeout);
 
       // passed a sendto context when we have a path established otherwise
       // nullptr if the path was not made before the timeout
@@ -293,7 +277,7 @@ namespace llarp
       bool
       EnsurePathToService(const Address remote, PathEnsureHook h, llarp_time_t timeoutMS);
 
-      using SNodeEnsureHook = std::function<void(const RouterID, exit::BaseSession_ptr)>;
+      using SNodeEnsureHook = std::function<void(const RouterID, exit::BaseSession_ptr, ConvoTag)>;
 
       /// ensure a path to a service node by public key
       bool
@@ -381,7 +365,7 @@ namespace llarp
       SendToServiceOrQueue(
           const service::Address& addr, const llarp_buffer_t& payload, ProtocolType t);
       bool
-      SendToSNodeOrQueue(const RouterID& addr, const llarp_buffer_t& payload);
+      SendToSNodeOrQueue(const RouterID& addr, const llarp_buffer_t& payload, ProtocolType t);
 
       std::optional<AuthInfo>
       MaybeGetAuthInfoForEndpoint(service::Address addr);
@@ -436,7 +420,7 @@ namespace llarp
       bool m_PublishIntroSet = true;
       std::unique_ptr<EndpointState> m_state;
       std::shared_ptr<IAuthPolicy> m_AuthPolicy;
-      std::unordered_map<Address, AuthInfo, Address::Hash> m_RemoteAuthInfos;
+      std::unordered_map<Address, AuthInfo> m_RemoteAuthInfos;
 
       /// (lns name, optional exit range, optional auth info) for looking up on startup
       std::unordered_map<std::string, std::pair<std::optional<IPRange>, std::optional<AuthInfo>>>
@@ -457,11 +441,13 @@ namespace llarp
       const IntroSet& introSet() const;
       IntroSet&       introSet();
 
-      using ConvoMap = std::unordered_map< ConvoTag, Session, ConvoTag::Hash >;
+      using ConvoMap = std::unordered_map<ConvoTag, Session>;
       const ConvoMap& Sessions() const;
       ConvoMap&       Sessions();
       // clang-format on
       thread::Queue<RecvDataEvent> m_RecvQueue;
+
+      std::shared_ptr<quic::Server> m_QuicServer;
     };
 
     using Endpoint_ptr = std::shared_ptr<Endpoint>;

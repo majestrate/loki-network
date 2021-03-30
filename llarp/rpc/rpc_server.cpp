@@ -55,6 +55,7 @@ namespace llarp::rpc
   /// a function that replies to an rpc request
   using ReplyFunction_t = std::function<void(std::string)>;
 
+  /// get an endpoint base from a router by its name
   std::shared_ptr<EndpointBase>
   GetEndpointByName(AbstractRouter* r, std::string name)
   {

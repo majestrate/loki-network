@@ -21,6 +21,13 @@ namespace llarp
         return m_Values.count(v) != 0;
       }
 
+      /// return the number of elements we have in here
+      size_t
+      Size() const
+      {
+        return m_Values.size();
+      }
+
       /// return true if inserted
       /// return false if not inserted
       bool

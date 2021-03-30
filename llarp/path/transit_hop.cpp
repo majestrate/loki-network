@@ -214,6 +214,7 @@ namespace llarp
               info.downstream,
               " to ",
               info.upstream);
+          m_UpstreamSent += msg.X.size();
           r->SendToOrQueue(info.upstream, &msg);
         }
         r->linkManager().PumpLinks();
@@ -232,6 +233,7 @@ namespace llarp
             info.upstream,
             " to ",
             info.downstream);
+        m_DownstreamSent += msg.X.size();
         r->SendToOrQueue(info.downstream, &msg);
       }
       r->linkManager().PumpLinks();
@@ -435,19 +437,27 @@ namespace llarp
         const llarp::routing::PathTransferMessage& msg, AbstractRouter* r)
     {
       auto path = r->pathContext().GetPathForTransfer(msg.P);
-      llarp::routing::DataDiscardMessage discarded(msg.P, msg.S);
+      llarp::routing::DataDiscardMessage discarded{msg.P, msg.S};
       if (path == nullptr || msg.T.F != info.txID)
       {
         return SendRoutingMessage(discarded, r);
       }
 
+      if (path->rejectedFlows.count({msg.T.T, info.txID}))
+      {
+        // this was rejected before from the other end
+        // send discard back to not propagate traffic down the recip's end
+        return SendRoutingMessage(discarded, r);
+      }
+
       std::array<byte_t, service::MAX_PROTOCOL_MESSAGE_SIZE> tmp;
-      llarp_buffer_t buf(tmp);
+      llarp_buffer_t buf{tmp};
       if (!msg.T.BEncode(&buf))
       {
         llarp::LogWarn(info, " failed to transfer data message, encode failed");
         return SendRoutingMessage(discarded, r);
       }
+
       // rewind
       buf.sz = buf.cur - buf.base;
       buf.cur = buf.base;
@@ -455,6 +465,15 @@ namespace llarp
       if (path->HandleDownstream(buf, msg.Y, r))
       {
         m_FlushOthers.emplace(path);
+        // snoop on frame and add to ignored convotags if it's a rejection frame so that
+        // this way we can help lessen volume based spamming of snapps, a bit (probably).
+        if (msg.T.R)
+        {
+          // this was a rejection so mark it as such on the end that sent the rejection
+          // this way when the other end wants to send to us it'll reflect a discard back
+          // we record the path id so that senders cannot reset convotags that aren't theirs
+          rejectedFlows.insert({msg.T.T, msg.P});
+        }
         return true;
       }
       return SendRoutingMessage(discarded, r);
@@ -467,6 +486,7 @@ namespace llarp
       printer.printAttribute("TransitHop", info);
       printer.printAttribute("started", started.count());
       printer.printAttribute("lifetime", lifetime.count());
+      printer.printAttribute("numFlowsRejected", rejectedFlows.size());
       return stream;
     }
 
@@ -487,6 +507,25 @@ namespace llarp
     TransitHop::QueueDestroySelf(AbstractRouter* r)
     {
       r->loop()->call([self = shared_from_this()] { self->SetSelfDestruct(); });
+    }
+
+    util::StatusObject
+    TransitHop::ExtractStatus() const
+    {
+      return util::StatusObject{
+          {"upstream", info.upstream.ToString()},
+          {"downstream", info.downstream.ToString()},
+          {"txid", info.txID.ToHex()},
+          {"rxid", info.rxID.ToHex()},
+          {"lifetime", to_json(lifetime)},
+          {"createdAt", to_json(started)},
+          {"lastActiveAt", to_json(m_LastActivity)},
+          {"numRejectedFlows", rejectedFlows.size()},
+          {"upstreamBytesSent", m_UpstreamSent},
+          {"downstreamBytesSent", m_DownstreamSent},
+          {"upstreamReplayFilter", m_UpstreamReplayFilter.Size()},
+          {"downstreamReplayFilter", m_DownstreamReplayFilter.Size()},
+      };
     }
   }  // namespace path
 }  // namespace llarp

@@ -116,11 +116,11 @@ namespace llarp
         using Mutex_t = util::NullMutex;
         using Lock_t = util::NullLock;
 
-        Mutex_t first;  // protects second
+        mutable Mutex_t first;  // protects second
         TransitHopsMap_t second GUARDED_BY(first);
 
         void
-        ForEach(std::function<void(const TransitHop_ptr&)> visit) EXCLUDES(first)
+        ForEach(std::function<void(const TransitHop_ptr&)> visit) EXCLUDES(first) const
         {
           Lock_t lock(first);
           for (const auto& item : second)
@@ -133,11 +133,11 @@ namespace llarp
 
       struct SyncOwnedPathsMap_t
       {
-        util::Mutex first;  // protects second
+        mutable util::Mutex first;  // protects second
         OwnedPathsMap_t second GUARDED_BY(first);
 
         void
-        ForEach(std::function<void(const Path_ptr&)> visit)
+        ForEach(std::function<void(const Path_ptr&)> visit) const
         {
           util::Lock lock(first);
           for (const auto& item : second)
@@ -160,6 +160,9 @@ namespace llarp
       /// current number of transit paths we have
       uint64_t
       CurrentTransitPaths();
+
+      util::StatusObject
+      ExtractStatus() const;
 
      private:
       AbstractRouter* m_Router;

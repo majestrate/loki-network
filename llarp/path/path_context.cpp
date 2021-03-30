@@ -358,5 +358,15 @@ namespace llarp
 
     void PathContext::RemovePathSet(PathSet_ptr)
     {}
+
+    util::StatusObject
+    PathContext::ExtractStatus() const
+    {
+      std::vector<util::StatusObject> owned, transit;
+      m_OurPaths.ForEach([&owned](const auto& path) { owned.push_back(path->ExtractStatus()); });
+      m_TransitPaths.ForEach(
+          [&transit](const auto& path) { transit.push_back(path->ExtractStatus()); });
+      return util::StatusObject{{"owned", owned}, {"transit", transit}};
+    }
   }  // namespace path
 }  // namespace llarp

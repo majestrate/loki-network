@@ -3,10 +3,14 @@
 #include <llarp/constants/path.hpp>
 #include "ihophandler.hpp"
 #include "path_types.hpp"
+#include "flow_info.hpp"
+#include <llarp/service/convotag.hpp>
 #include <llarp/routing/handler.hpp>
 #include <llarp/router_id.hpp>
 #include <llarp/util/compare_ptr.hpp>
 #include <llarp/util/thread/queue.hpp>
+
+#include <unordered_set>
 
 namespace llarp
 {
@@ -115,6 +119,9 @@ namespace llarp
         return now >= ExpireTime() - dlt;
       }
 
+      util::StatusObject
+      ExtractStatus() const;
+
       // send routing message when end of path
       bool
       SendRoutingMessage(const routing::IMessage& msg, AbstractRouter* r) override;
@@ -204,6 +211,9 @@ namespace llarp
       thread::Queue<RelayDownstreamMessage> m_DownstreamGather;
       std::atomic<uint32_t> m_UpstreamWorkCounter;
       std::atomic<uint32_t> m_DownstreamWorkCounter;
+      std::unordered_set<FlowInfo> rejectedFlows;
+      uint64_t m_UpstreamSent = 0;
+      uint64_t m_DownstreamSent = 0;
     };
 
     inline std::ostream&

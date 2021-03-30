@@ -325,6 +325,17 @@ namespace llarp
       return false;
     }
 
+    bool
+    Endpoint::HasOutboundConvo(const Address& addr) const
+    {
+      for (const auto& item : Sessions())
+      {
+        if (item.second.remote.Addr() == addr && not item.second.inbound)
+          return true;
+      }
+      return false;
+    }
+
     void
     Endpoint::PutSenderFor(const ConvoTag& tag, const ServiceInfo& info, bool inbound)
     {
@@ -981,11 +992,14 @@ namespace llarp
         path::Path_ptr path, const PathID_t from, std::shared_ptr<ProtocolMessage> msg)
     {
       msg->sender.UpdateAddr();
-      PutSenderFor(msg->tag, msg->sender, true);
+      if(not HasOutboundConvo(msg->sender.Addr()))
+      {
+        PutSenderFor(msg->tag, msg->sender, true);
+      }
       PutReplyIntroFor(msg->tag, path->intro);
       Introduction intro;
       intro.pathID = from;
-      intro.router = PubKey(path->Endpoint());
+      intro.router = PubKey{path->Endpoint()};
       intro.expiresAt = std::min(path->ExpireTime(), msg->introReply.expiresAt);
       PutIntroFor(msg->tag, intro);
       return ProcessDataMessage(msg);
@@ -1621,10 +1635,6 @@ namespace llarp
               },
               1500ms);
           return true;
-        }
-        else
-        {
-          LogDebug("SendOrQueue failed: no inbound/outbound sessions");
         }
       }
       return false;

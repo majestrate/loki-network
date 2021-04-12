@@ -7,6 +7,7 @@ add_library(lokinet-util
   util/fs.cpp
   util/json.cpp
   util/logging/android_logger.cpp
+  util/logging/buffer.cpp
   util/logging/file_logger.cpp
   util/logging/json_logger.cpp
   util/logging/logger.cpp
@@ -27,28 +28,17 @@ add_dependencies(lokinet-util genversion)
 
 target_include_directories(lokinet-util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR})
 
-if(NOT TARGET sqlite3)
-  add_library(sqlite3 INTERFACE)
-  pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
-  target_link_libraries(sqlite3 INTERFACE PkgConfig::SQLITE3)
-endif()
-
 target_link_libraries(lokinet-util PUBLIC
   lokinet-cryptography
   nlohmann_json::nlohmann_json
   filesystem
   date::date
-  oxenmq
-  sqlite3
+  oxenmq::oxenmq
 )
 
 if(ANDROID)
   target_link_libraries(lokinet-util PUBLIC log)
 endif()
-
-add_library(uvw INTERFACE)
-target_include_directories(uvw INTERFACE ${PROJECT_SOURCE_DIR}/external/uvw/src)
-target_link_libraries(uvw INTERFACE libuv)
 
 add_library(lokinet-platform
 # for networking
@@ -137,6 +127,9 @@ add_library(liblokinet
   dht/recursiverouterlookup.cpp
   dht/serviceaddresslookup.cpp
   dht/taglookup.cpp
+
+  endpoint_base.cpp
+  
   exit/context.cpp
   exit/endpoint.cpp
   exit/exit_messages.cpp
@@ -171,15 +164,26 @@ add_library(liblokinet
   peerstats/types.cpp
   pow.cpp
   profiling.cpp
+
+  quic/address.cpp
+  quic/client.cpp
+  quic/connection.cpp
+  quic/endpoint.cpp
+  quic/null_crypto.cpp
+  quic/server.cpp
+  quic/stream.cpp
+  quic/tunnel.cpp
+
+  router_contact.cpp
+  router_id.cpp
+  router_version.cpp
+  service/name.cpp
   router/outbound_message_handler.cpp
   router/outbound_session_maker.cpp
   router/rc_lookup_handler.cpp
   router/rc_gossiper.cpp
   router/router.cpp
   router/route_poker.cpp
-  router_contact.cpp
-  router_id.cpp
-  router_version.cpp
   routing/dht_message.cpp
   routing/message_parser.cpp
   routing/path_confirm_message.cpp
@@ -192,6 +196,7 @@ add_library(liblokinet
   service/address.cpp
   service/async_key_exchange.cpp
   service/auth.cpp
+  service/convotag.cpp
   service/context.cpp
   service/endpoint_state.cpp
   service/endpoint_util.cpp
@@ -232,7 +237,7 @@ if(WITH_HIVE)
   )
 endif()
 
-target_link_libraries(liblokinet PUBLIC cxxopts lokinet-platform lokinet-util lokinet-cryptography)
+target_link_libraries(liblokinet PUBLIC cxxopts lokinet-platform lokinet-util lokinet-cryptography sqlite_orm ngtcp2)
 target_link_libraries(liblokinet PRIVATE libunbound)
 
 

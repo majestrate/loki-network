@@ -13,6 +13,8 @@
 #include <llarp/tooling/router_event.hpp>
 #include <llarp/peerstats/peer_db.hpp>
 
+#include <optional>
+
 #ifdef LOKINET_HIVE
 #include <llarp/tooling/router_event.hpp>
 #endif

@@ -13,6 +13,9 @@
 
 #include <future>
 #include <queue>
+#include <type_traits>
+#include <variant>
+#include "service/protocol_type.hpp"
 
 namespace llarp
 {
@@ -38,7 +41,7 @@ namespace llarp
       Configure(const NetworkConfig& conf, const DnsConfig& dnsConf) override;
 
       void
-      SendPacketToRemote(const llarp_buffer_t&) override{};
+      SendPacketToRemote(const llarp_buffer_t&, service::ProtocolType) override{};
 
       std::string
       GetIfName() const override;
@@ -121,23 +124,8 @@ namespace llarp
       HasLocalIP(const huint128_t& ip) const;
 
       /// get a key for ip address
-      template <typename Addr_t>
-      Addr_t
-      ObtainAddrForIP(huint128_t ip, bool isSNode)
-      {
-        Addr_t addr;
-        auto itr = m_IPToAddr.find(ip);
-        if (itr != m_IPToAddr.end() and m_SNodes[itr->second] == isSNode)
-        {
-          addr = Addr_t(itr->second);
-        }
-        // found
-        return addr;
-      }
-
-      template <typename Addr_t>
-      bool
-      FindAddrForIP(Addr_t& addr, huint128_t ip);
+      std::optional<std::variant<service::Address, RouterID>>
+      ObtainAddrForIP(huint128_t ip) const override;
 
       bool
       HasAddress(const AlignedBuffer<32>& addr) const
@@ -147,7 +135,7 @@ namespace llarp
 
       /// get ip address for key unconditionally
       huint128_t
-      ObtainIPForAddr(const AlignedBuffer<32>& addr, bool serviceNode) override;
+      ObtainIPForAddr(std::variant<service::Address, RouterID> addr) override;
 
       /// flush network traffic
       void
@@ -214,12 +202,11 @@ namespace llarp
           Endpoint_t ctx,
           std::shared_ptr<dns::Message> query,
           std::function<void(dns::Message)> reply,
-          bool snode,
           bool sendIPv6)
       {
         if (ctx)
         {
-          huint128_t ip = ObtainIPForAddr(addr, snode);
+          huint128_t ip = ObtainIPForAddr(addr);
           query->answers.clear();
           query->AddINReply(ip, sendIPv6);
         }

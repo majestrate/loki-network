@@ -42,7 +42,7 @@
 
 #include <oxenmq/oxenmq.h>
 
-static constexpr std::chrono::milliseconds ROUTER_TICK_INTERVAL = 1s;
+static constexpr std::chrono::milliseconds ROUTER_TICK_INTERVAL = 100ms;
 
 namespace llarp
 {
@@ -853,7 +853,7 @@ namespace llarp
     if (connected < connectToNum)
     {
       size_t dlt = connectToNum - connected;
-      LogInfo("connecting to ", dlt, " random routers to keep alive");
+      LogDebug("connecting to ", dlt, " random routers to keep alive");
       _outboundSessionMaker.ConnectToRandomRouters(dlt);
     }
 
@@ -1248,7 +1248,7 @@ namespace llarp
     LogInfo("accepting transit traffic");
     paths.AllowTransit();
     llarp_dht_allow_transit(dht());
-    _exitContext.AddExitEndpoint("default-connectivity", m_Config->network, m_Config->dns);
+    _exitContext.AddExitEndpoint("default", m_Config->network, m_Config->dns);
     return true;
   }
 

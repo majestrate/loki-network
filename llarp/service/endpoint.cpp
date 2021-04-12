@@ -186,14 +186,16 @@ namespace llarp
         std::function<void(std::vector<dns::SRVData>)> resultHandler)
     {
       auto fail = [resultHandler]() { resultHandler({}); };
-      auto lookupByAddress = [resultHandler](auto address) {
+
+      auto lookupByAddress = [resultHandler, service, fail](auto address) {
+        fail();  // TODO: remove this after below are implemented
         if (auto* ptr = std::get_if<RouterID>(&address))
-        {}
-        else if (auto* ptr = std::get_if<Address>(&address))
-        {}
-        else
         {
-          resultHandler({});
+          // TODO: find router by id and pick out the srv records
+        }
+        else if (auto* ptr = std::get_if<Address>(&address))
+        {
+          // TODO: lookup introset and pick out the srv records
         }
       };
       if (auto maybe = ParseAddress(name))
@@ -1066,15 +1068,6 @@ namespace llarp
     {
       return m_Identity.pub.Addr();
     }
-
-    inline void
-    AccumulateStats(const Session& session, EndpointBase::SendStat& stats)
-    {}
-
-    inline void
-    AccumulateStats(
-        const std::shared_ptr<exit::BaseSession>& session, EndpointBase::SendStat& stats)
-    {}
 
     std::optional<EndpointBase::SendStat> Endpoint::GetStatFor(AddressVariant_t) const
     {

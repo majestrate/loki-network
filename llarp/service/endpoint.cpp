@@ -96,9 +96,10 @@ namespace llarp
     }
 
     void
-    Endpoint::RegenAndPublishIntroSet(bool forceRebuild)
+    Endpoint::RegenAndPublishIntroSet()
     {
       const auto now = llarp::time_now_ms();
+      m_LastIntrosetRegenAttempt = now;
       std::set<Introduction> introset;
       if (!GetCurrentIntroductionsWithFilter(
               introset, [now](const service::Introduction& intro) -> bool {
@@ -109,8 +110,7 @@ namespace llarp
             "could not publish descriptors for endpoint ",
             Name(),
             " because we couldn't get enough valid introductions");
-        if (ShouldBuildMore(now) || forceRebuild)
-          ManualRebuild(1);
+        BuildOne();
         return;
       }
       introSet().I.clear();
@@ -121,7 +121,7 @@ namespace llarp
       if (introSet().I.size() == 0)
       {
         LogWarn("not enough intros to publish introset for ", Name());
-        if (ShouldBuildMore(now) || forceRebuild)
+        if (ShouldBuildMore(now))
           ManualRebuild(1);
         return;
       }
@@ -1378,6 +1378,17 @@ namespace llarp
         }
       }
       return hookAdded;
+    }
+
+    void
+    Endpoint::SRVRecordsChanged()
+    {
+      auto& introset = introSet();
+      introset.SRVs.clear();
+      for (const auto& srv : SRVRecords())
+        introset.SRVs.emplace_back(srv.toTuple());
+
+      RegenAndPublishIntroSet();
     }
 
     bool

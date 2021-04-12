@@ -130,7 +130,6 @@ namespace llarp
       ctx->router->NotifyRouterEvent<tooling::PathAttemptEvent>(ctx->router->pubkey(), ctx->path);
 
       const RouterID remote = ctx->path->Upstream();
-      const ILinkMessage* msg = &ctx->LRCM;
       auto sentHandler = [ctx](auto status) {
         if (status == SendStatus::Success)
         {
@@ -145,7 +144,7 @@ namespace llarp
         ctx->path = nullptr;
         ctx->pathset = nullptr;
       };
-      if (ctx->router->SendToOrQueue(remote, msg, sentHandler))
+      if (ctx->router->SendToOrQueue(remote, ctx->LRCM, sentHandler))
       {
         // persist session with router until this path is done
         if (ctx->path)
@@ -359,9 +358,10 @@ namespace llarp
             }
 
             hopsSet.insert(rc);
+#ifndef TESTNET
             if (not pathConfig.Acceptable(hopsSet))
               return false;
-
+#endif
             return rc.pubkey != endpointRC.pubkey;
           };
 

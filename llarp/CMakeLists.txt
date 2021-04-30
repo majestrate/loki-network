@@ -56,18 +56,17 @@ add_library(lokinet-platform
   net/sock_addr.cpp
   vpn/packet_router.cpp
   vpn/platform.cpp
+  # moar platform specific bits
 )
+
 
 target_link_libraries(lokinet-platform PUBLIC lokinet-cryptography lokinet-util Threads::Threads base_libs uvw)
 
 
 if (ANDROID)
-  target_sources(lokinet-platform PRIVATE android/ifaddrs.c)
-endif()
-
-if(CMAKE_SYSTEM_NAME MATCHES "Linux")
-  target_sources(lokinet-platform PRIVATE linux/netns.cpp)
-
+  target_sources(lokinet-platform PRIVATE android/ifaddrs.c android/platform.cpp)
+elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
+  target_sources(lokinet-platform PRIVATE linux/netns.cpp linux/platform.cpp)
   if(NON_PC_TARGET)
     add_import_library(rt)
     target_link_libraries(lokinet-platform PUBLIC rt)
@@ -76,6 +75,7 @@ endif()
 
 if (WIN32)
   target_sources(lokinet-platform PRIVATE
+    win32/platform.cpp
     win32/win32_inet.c
     win32/win32_intrnl.c)
 
@@ -83,11 +83,22 @@ if (WIN32)
 endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+  target_sources(lokinet-platform PRIVATE
+    freebsd/platform.cpp)
+
   target_include_directories(lokinet-platform SYSTEM PUBLIC /usr/local/include)
+endif()
+
+if(APPLE)
+  target_sources(lokinet-platform PRIVATE
+    apple/platform.cpp)
 endif()
 
 add_library(liblokinet
   STATIC
+
+  core_daemon.cpp
+
   config/config.cpp
   config/definition.cpp
   config/ini.cpp
@@ -130,7 +141,7 @@ add_library(liblokinet
   dht/taglookup.cpp
 
   endpoint_base.cpp
-  
+
   exit/context.cpp
   exit/endpoint.cpp
   exit/exit_messages.cpp
@@ -224,7 +235,7 @@ add_library(liblokinet
 set_target_properties(liblokinet PROPERTIES OUTPUT_NAME lokinet)
 
 enable_lto(lokinet-util lokinet-platform liblokinet)
-  
+
 if(TRACY_ROOT)
   target_sources(liblokinet PRIVATE ${TRACY_ROOT}/TracyClient.cpp)
 endif()

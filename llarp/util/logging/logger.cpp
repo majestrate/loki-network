@@ -104,7 +104,8 @@ namespace llarp
     if (level == eLogTrace)
       LogTrace("Set log level to trace.");
 
-    nodeName = nickname;
+    if (not nickname.empty())
+      nodeName = nickname;
 
     FILE* logfile = nullptr;
     if (file == "stdout" or file == "-" or file.empty())

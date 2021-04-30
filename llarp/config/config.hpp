@@ -67,6 +67,11 @@ namespace llarp
 
     bool m_isRelay = false;
 
+    /// drop to uid
+    std::optional<uid_t> m_uid;
+    /// drop to gid
+    std::optional<gid_t> m_gid;
+
     void
     defineConfigOptions(ConfigDefinition& conf, const ConfigGenParameters& params);
   };

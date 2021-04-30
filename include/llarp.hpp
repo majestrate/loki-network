@@ -36,7 +36,7 @@ namespace llarp
     bool isSNode = false;
   };
 
-  struct Context
+  struct [[deprecated]] Context
   {
     std::shared_ptr<Crypto> crypto = nullptr;
     std::shared_ptr<CryptoManager> cryptoManager = nullptr;
@@ -96,10 +96,6 @@ namespace llarp
     virtual std::shared_ptr<NodeDB>
     makeNodeDB();
 
-    /// create the vpn platform for use in creating network interfaces
-    virtual std::shared_ptr<llarp::vpn::Platform>
-    makeVPNPlatform();
-
 #ifdef ANDROID
 
     int androidFD = -1;
@@ -119,6 +115,86 @@ namespace llarp
     Close();
 
     std::unique_ptr<std::promise<void>> closeWaiter;
+  };
+
+  namespace platform
+  {
+    class Platform;
+    class Proxy;
+  }  // namespace platform
+
+  class PlatformDaemon
+  {
+    std::shared_ptr<platform::Platform> _platform;
+
+   public:
+    /// run priviledged bits
+    void
+    RunPriviledged();
+  };
+
+  class CoreDaemon
+  {
+    std::shared_ptr<platform::Platform> _platform;
+    std::shared_ptr<platform::Proxy> _platformProxy;
+    std::shared_ptr<llarp::Config> _config;
+    std::shared_ptr<llarp::AbstractRouter> _router;
+    std::shared_ptr<llarp::EventLoop> _loop;
+    std::shared_ptr<llarp::Crypto> _crypto;
+    std::shared_ptr<llarp::CryptoManager> _cryptoManager;
+
+    const llarp::RuntimeOptions _opts;
+
+   public:
+    explicit CoreDaemon(std::shared_ptr<llarp::Config> config, const llarp::RuntimeOptions opts);
+
+    virtual ~CoreDaemon() = default;
+
+    virtual std::shared_ptr<AbstractRouter>
+    MakeRouter() const;
+
+    virtual std::shared_ptr<EventLoop>
+    MakeLoop() const;
+
+    virtual std::shared_ptr<platform::Platform>
+    MakePlatform();
+
+    virtual std::shared_ptr<NodeDB>
+    MakeNodeDB() const;
+
+    /// drop privileges
+    /// throws if it can't
+    void
+    DropPrivs() const;
+
+    /// configure and setup contexts before priv drop
+    void
+    Init();
+
+    /// run mainloop
+    void
+    Run();
+
+    /// handle signal from OS asynchronously
+    void
+    AsyncHandleSignal(int sig);
+
+    /// router is running
+    bool
+    Running() const;
+
+    /// router is alive
+    bool
+    Alive() const;
+
+    /// stop router activity
+    void
+    Stop();
+
+    /// wait for the router to end at most N ms
+    /// return true if we are down
+    bool
+    WaitForDone(std::chrono::milliseconds N);
   };
 
 }  // namespace llarp

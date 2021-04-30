@@ -1,5 +1,5 @@
 #include "ev_libuv.hpp"
-#include "vpn.hpp"
+#include "llarp/platform/vpn.hpp"
 #include <memory>
 #include <thread>
 #include <type_traits>

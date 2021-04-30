@@ -2,7 +2,7 @@
 
 #include <llarp/dns/server.hpp>
 #include <llarp/ev/ev.hpp>
-#include <llarp/ev/vpn.hpp>
+#include <llarp/platform/vpn.hpp>
 #include <llarp/net/ip.hpp>
 #include <llarp/net/ip_packet.hpp>
 #include <llarp/net/net.hpp>

@@ -22,6 +22,11 @@
 #include <iostream>
 #include <llarp/constants/version.hpp>
 
+#ifndef _WIN32
+#include <pwd.h>
+#include <grp.h>
+#endif
+
 namespace llarp
 {
   // constants for config file default values
@@ -239,6 +244,40 @@ namespace llarp
             "Filename in which to store the transport private key.",
             relative_to_datadir,
         });
+
+#ifndef _WIN32
+    conf.defineOption<std::string>(
+        "router",
+        "user",
+        Comment{
+            "drop priviledges to run as user by name (requires root)",
+        },
+        [this](std::string arg) {
+          if (auto* pw = ::getpwnam(arg.c_str()))
+          {
+            m_uid = pw->pw_uid;
+          }
+          else
+            throw std::invalid_argument{
+                "cannot find user by name: " + std::string(strerror(errno))};
+        });
+    conf.defineOption<std::string>(
+        "router",
+        "group",
+        Comment{
+            "drop priviledges to run as group by name (requires root)",
+        },
+        [this](std::string arg) {
+          if (auto* gr = getgrnam(arg.c_str()))
+          {
+            m_gid = gr->gr_gid;
+          }
+          else
+            throw std::invalid_argument{
+                "cannot find group by name: " + std::string(strerror(errno))};
+        });
+
+#endif
 
     // Deprecated options:
 

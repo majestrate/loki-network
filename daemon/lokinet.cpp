@@ -61,16 +61,20 @@ SERVICE_STATUS_HANDLE SvcStatusHandle;
 bool start_as_daemon = false;
 #endif
 
-std::shared_ptr<llarp::Context> ctx;
-std::promise<int> exit_code;
+std::shared_ptr<llarp::CoreDaemon> g_Daemon;
 
 void
 handle_signal(int sig)
 {
-  if (ctx)
-    ctx->loop->call([sig] { ctx->HandleSignal(sig); });
+  if (g_Daemon)
+  {
+    g_Daemon->AsyncHandleSignal(sig);
+  }
   else
+  {
     std::cerr << "Received signal " << sig << ", but have no context yet. Ignoring!" << std::endl;
+    ::exit(1);
+  }
 }
 
 #ifdef _WIN32
@@ -251,28 +255,28 @@ uninstall_win32_daemon()
 }
 #endif
 
-/// this sets up, configures and runs the main context
 static void
-run_main_context(std::optional<fs::path> confFile, const llarp::RuntimeOptions opts)
+run_context_and_drop_privs(
+    std::optional<fs::path> configFile,
+    const llarp::RuntimeOptions opts,
+    std::promise<int>& informResult)
 {
-  llarp::LogTrace("start of run_main_context()");
   try
   {
+    llarp::util::SetThreadName("llarp-mainloop");
     std::shared_ptr<llarp::Config> conf;
-    if (confFile.has_value())
+    if (configFile.has_value())
     {
-      llarp::LogInfo("Using config file: ", *confFile);
-      conf = std::make_shared<llarp::Config>(confFile->parent_path());
+      llarp::LogInfo("Using config file: ", *configFile);
+      conf = std::make_shared<llarp::Config>(configFile->parent_path());
     }
     else
     {
       conf = std::make_shared<llarp::Config>(llarp::GetDefaultDataDir());
     }
-    if (!conf->Load(confFile, opts.isSNode))
-      throw std::runtime_error{"Config file parsing failed"};
 
-    ctx = std::make_shared<llarp::Context>();
-    ctx->Configure(std::move(conf));
+    if (!conf->Load(configFile, opts.isSNode))
+      throw std::runtime_error{"Config file parsing failed"};
 
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
@@ -281,22 +285,23 @@ run_main_context(std::optional<fs::path> confFile, const llarp::RuntimeOptions o
     signal(SIGUSR1, handle_signal);
 #endif
 
-    ctx->Setup(opts);
+    g_Daemon = std::make_shared<llarp::CoreDaemon>(std::move(conf), opts);
 
-    llarp::util::SetThreadName("llarp-mainloop");
+    g_Daemon->Init();
 
-    auto result = ctx->Run(opts);
-    exit_code.set_value(result);
+    g_Daemon->DropPrivs();
+    g_Daemon->Run();
+    informResult.set_value(0);
   }
   catch (std::exception& e)
   {
     llarp::LogError("Fatal: caught exception while running: ", e.what());
-    exit_code.set_exception(std::current_exception());
+    informResult.set_exception(std::current_exception());
   }
   catch (...)
   {
     llarp::LogError("Fatal: caught non-standard exception while running");
-    exit_code.set_exception(std::current_exception());
+    informResult.set_exception(std::current_exception());
   }
 }
 
@@ -370,6 +375,38 @@ GenerateDump(EXCEPTION_POINTERS* pExceptionPointers)
 
 #endif
 
+#ifdef _WIN32
+class WinSockGlobals
+{
+ public:
+  WinSockGlobals()
+  {
+    if (startWinsock())
+      throw std::runtime_error{"cannot start winsock"};
+  }
+};
+
+#endif
+
+/// global raii setup teardown
+class Globals
+{
+#ifdef _WIN32
+  WindowsServiceStopped _service;
+  WinSockGlobals _winsock;
+#endif
+ public:
+  Globals()
+  {
+#ifdef _WIN32
+    SetConsoleCtrlHandler(handle_signal_win32, TRUE);
+    SetUnhandledExceptionFilter(&GenerateDump);
+#endif
+    if (auto result = Lokinet_INIT())
+      throw std::runtime_error{"lokinet failed to initialize: " + std::to_string(result)};
+  }
+};
+
 int
 main(int argc, char* argv[])
 {
@@ -391,21 +428,10 @@ main(int argc, char* argv[])
 int
 lokinet_main(int argc, char* argv[])
 {
-  auto result = Lokinet_INIT();
-  if (result)
-  {
-    return result;
-  }
   llarp::RuntimeOptions opts;
 
-#ifdef _WIN32
-  WindowsServiceStopped stopped_raii;
-  if (startWinsock())
-    return -1;
-  SetConsoleCtrlHandler(handle_signal_win32, TRUE);
+  Globals globals{};
 
-  // SetUnhandledExceptionFilter(win32_signal_handler);
-#endif
   cxxopts::Options options(
       "lokinet",
       "LokiNET is a free, open source, private, "
@@ -563,11 +589,9 @@ lokinet_main(int argc, char* argv[])
     return 0;
   }
 
-#ifdef _WIN32
-  SetUnhandledExceptionFilter(&GenerateDump);
-#endif
+  std::promise<int> exit_code;
 
-  std::thread main_thread{[&] { run_main_context(configFile, opts); }};
+  std::thread main_thread{[&] { run_context_and_drop_privs(configFile, opts, exit_code); }};
   auto ftr = exit_code.get_future();
 
 #ifdef _WIN32
@@ -577,7 +601,7 @@ lokinet_main(int argc, char* argv[])
   do
   {
     // do periodic non lokinet related tasks here
-    if (ctx and ctx->IsUp() and not ctx->LooksAlive())
+    if (g_Daemon and g_Daemon->Running() and not g_Daemon->Alive())
     {
       for (const auto& wtf :
            {"you have been visited by the mascott of the deadlocked router.",
@@ -620,19 +644,19 @@ lokinet_main(int argc, char* argv[])
   }
   catch (const std::exception& e)
   {
-    std::cerr << "main thread threw exception: " << e.what() << std::endl;
+    LogError("main thread threw exception: ", e.what());
     code = 1;
   }
   catch (...)
   {
-    std::cerr << "main thread threw non-standard exception" << std::endl;
+    LogError("main thread threw non-standard exception");
     code = 2;
   }
 
   llarp::LogContext::Instance().ImmediateFlush();
-  if (ctx)
+  if (g_Daemon)
   {
-    ctx.reset();
+    g_Daemon.reset();
   }
   return code;
 }

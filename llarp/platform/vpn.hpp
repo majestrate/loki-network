@@ -75,8 +75,4 @@ namespace llarp::vpn
     ObtainInterface(InterfaceInfo info) = 0;
   };
 
-  /// create native vpn platform
-  std::shared_ptr<Platform>
-  MakeNativePlatform(llarp::Context* ctx);
-
 }  // namespace llarp::vpn

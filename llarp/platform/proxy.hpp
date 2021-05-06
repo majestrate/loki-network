@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <string_view>
 #include <vector>
 
 namespace llarp::platform
@@ -34,8 +35,6 @@ namespace llarp::platform
     Noun entity;
     /// what are we doing with the entity we are acting on
     Verb action;
-    /// the parameters if they exist
-    std::vector<std::vector<std::byte>> params;
   };
 
   /// a notification event type
@@ -57,8 +56,6 @@ namespace llarp::platform
     Noun entity;
     /// what happened to the entity
     Event what;
-    /// the parameters for this event if they exist
-    std::vector<std::vector<std::byte>> params;
   };
 
   /// proxy for talking with the platform process
@@ -70,16 +67,24 @@ namespace llarp::platform
     /// send a request
     /// handle response with a handler called with (success, return_values)
     virtual void
-    Request(
-        Request req, std::function<void(bool, std::vector<std::vector<std::byte>>)> handler) = 0;
+    Request(Request req, std::function<void(bool, std::vector<std::string_view>)> handler) = 0;
 
     /// subscribe to notifications for a noun
     virtual void
-    Subscribe(Noun noun, std::function<void(Notification)> handler) = 0;
+    Subscribe(Noun noun, std::function<void(Notification, std::string_view)> handler) = 0;
 
-    /// subscribe to all notifiactions for all nouns
+    /// get pollable file descriptor
+    virtual int
+    FD() const = 0;
+
+    /// read next values
+    /// returns true if we have more to read
+    virtual bool
+    Read() = 0;
+
+    /// propagate signal
     virtual void
-    SubscribeAll(std::function<void(Notification)> handler) = 0;
+    Signal(int sig) const = 0;
   };
 
 }  // namespace llarp::platform

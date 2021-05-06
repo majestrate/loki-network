@@ -30,13 +30,14 @@ namespace llarp
     _cryptoManager = std::make_shared<CryptoManager>(_crypto.get());
   }
 
-  void
+  std::shared_ptr<platform::Platform>
   CoreDaemon::Init()
   {
     llarp::LogInfo(llarp::VERSION_FULL, " ", llarp::RELEASE_MOTTO);
     _platform = MakePlatform();
     _loop = MakeLoop();
     _router = MakeRouter();
+    return _platform;
   }
 
   void
@@ -70,6 +71,13 @@ namespace llarp
   }
 
   void
+  CoreDaemon::Stop()
+  {
+    if (_loop)
+      _loop->stop();
+  }
+
+  void
   CoreDaemon::AsyncHandleSignal(int sig)
   {
     if (_loop and _router and (sig == SIGINT or sig == SIGTERM))
@@ -77,12 +85,20 @@ namespace llarp
   }
 
   void
-  CoreDaemon::Run()
+  CoreDaemon::Run(platform::Proxy* proxy)
   {
+    // make the event loop adopt this platform proxy
+    if (proxy)
+      _loop->AdoptPlatform(proxy);
+    // configure router jizz
     if (not _router->Configure(_config, _opts.isSNode, MakeNodeDB()))
       throw std::runtime_error{"failed to configure router"};
+    // drop privs before running router
+    DropPrivs();
+    // run router
     if (not _router->Run())
       throw std::runtime_error{"failed to run router"};
+    // run mainloop
     _loop->run();
   }
 

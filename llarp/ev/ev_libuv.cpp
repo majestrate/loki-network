@@ -156,6 +156,22 @@ namespace llarp::uv
   }
 
   void
+  Loop::AdoptPlatform(platform::Proxy* proxy)
+  {
+    auto handle = m_Impl->resource<uvw::PollHandle>(proxy->FD());
+    if (!handle)
+      throw std::runtime_error{"cannot adopt platform proxy: failed to make poller"};
+
+    using event_t = uvw::PollEvent;
+
+    handle->on<event_t>([proxy](const event_t&, auto&) {
+      while (proxy->Read())
+      {}
+    });
+    handle->start(uvw::PollHandle::Event::READABLE);
+  }
+
+  void
   Loop::wakeup()
   {
     m_WakeUp->send();

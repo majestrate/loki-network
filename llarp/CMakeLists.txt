@@ -66,7 +66,11 @@ target_link_libraries(lokinet-platform PUBLIC lokinet-cryptography lokinet-util 
 if (ANDROID)
   target_sources(lokinet-platform PRIVATE android/ifaddrs.c android/platform.cpp)
 elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
-  target_sources(lokinet-platform PRIVATE linux/netns.cpp linux/platform.cpp)
+  target_sources(lokinet-platform PRIVATE
+    linux/netns.cpp
+    linux/platform.cpp
+    linux/proxy.cpp
+  )
   if(NON_PC_TARGET)
     add_import_library(rt)
     target_link_libraries(lokinet-platform PUBLIC rt)

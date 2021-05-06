@@ -168,12 +168,13 @@ namespace llarp
     DropPrivs() const;
 
     /// configure and setup contexts before priv drop
-    void
+    /// return the platform bits as a shared_ptr
+    std::shared_ptr<platform::Platform>
     Init();
 
     /// run mainloop
     void
-    Run();
+    Run(platform::Proxy* proxy);
 
     /// handle signal from OS asynchronously
     void

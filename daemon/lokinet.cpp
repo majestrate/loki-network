@@ -6,6 +6,7 @@
 #include <llarp/util/logging/logger.hpp>
 #include <llarp/util/logging/ostream_logger.hpp>
 #include <llarp/util/str.hpp>
+#include <llarp/platform/platform.hpp>
 
 #ifdef _WIN32
 #include <dbghelp.h>
@@ -63,16 +64,22 @@ bool start_as_daemon = false;
 
 std::shared_ptr<llarp::CoreDaemon> g_Daemon;
 
+std::unique_ptr<llarp::platform::Proxy> g_platform;
+
 void
 handle_signal(int sig)
 {
+  if (g_platform)
+  {
+    g_platform->Signal(sig);
+  }
+
   if (g_Daemon)
   {
     g_Daemon->AsyncHandleSignal(sig);
   }
   else
   {
-    std::cerr << "Received signal " << sig << ", but have no context yet. Ignoring!" << std::endl;
     ::exit(1);
   }
 }
@@ -284,13 +291,17 @@ run_context_and_drop_privs(
     signal(SIGHUP, handle_signal);
     signal(SIGUSR1, handle_signal);
 #endif
+    g_platform.reset();
+    g_platform = llarp::platform::Spawn();
 
     g_Daemon = std::make_shared<llarp::CoreDaemon>(std::move(conf), opts);
 
+    // initialize daemon stuff
     g_Daemon->Init();
-
-    g_Daemon->DropPrivs();
-    g_Daemon->Run();
+    // spawn the platform bits subprocses
+    // get a proxy for talking to it
+    // run it
+    g_Daemon->Run(g_platform.get());
     informResult.set_value(0);
   }
   catch (std::exception& e)
@@ -656,7 +667,12 @@ lokinet_main(int argc, char* argv[])
   llarp::LogContext::Instance().ImmediateFlush();
   if (g_Daemon)
   {
+    g_Daemon->Stop();
     g_Daemon.reset();
+  }
+  if (g_platform)
+  {
+    g_platform.reset();
   }
   return code;
 }

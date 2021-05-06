@@ -1,5 +1,6 @@
 #include "platform.hpp"
 #include "vpn.hpp"
+#include "proxy.hpp"
 
 namespace llarp::linux
 {
@@ -37,11 +38,14 @@ namespace llarp::linux
     return std::make_shared<vpn::LinuxPlatform>();
   }
 
+}  // namespace llarp::linux
+
+namespace llarp::platform
+{
   std::unique_ptr<platform::Proxy>
-  Platform::Spawn()
+  Spawn()
   {
-    // TODO: implement me
-    return nullptr;
+    return std::make_unique<linux::Proxy>();
   }
 
-}  // namespace llarp::linux
+}  // namespace llarp::platform

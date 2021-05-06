@@ -26,6 +26,11 @@ namespace llarp
     class NetworkInterface;
   }
 
+  namespace platform
+  {
+    class Proxy;
+  }
+
   namespace net
   {
     struct IPPacket;
@@ -71,6 +76,10 @@ namespace llarp
     // typically you want to run this in its own thread).
     virtual void
     run() = 0;
+
+    /// have this event loop own a platform proxy for doing platform specific operations
+    virtual void
+    AdoptPlatform(platform::Proxy* proxy) = 0;
 
     virtual bool
     running() const = 0;

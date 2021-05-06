@@ -15,9 +15,6 @@ namespace llarp::linux
 
     std::shared_ptr<vpn::Platform>
     MakeVPNPlatform() const override;
-
-    std::unique_ptr<platform::Proxy>
-    Spawn() override;
   };
 }  // namespace llarp::linux
 

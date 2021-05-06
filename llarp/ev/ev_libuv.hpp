@@ -4,6 +4,8 @@
 #include <llarp/util/thread/queue.hpp>
 #include <llarp/util/meta/memfn.hpp>
 
+#include <llarp/platform/proxy.hpp>
+
 #include <uvw/loop.h>
 #include <uvw/async.h>
 #include <uvw/poll.h>
@@ -27,6 +29,9 @@ namespace llarp::uv
 
     void
     run() override;
+
+    void
+    AdoptPlatform(platform::Proxy* proxy) override;
 
     bool
     running() const override;

@@ -66,6 +66,13 @@ namespace llarp
   void
   OutboundSessionMaker::CreateSessionTo(const RouterID& router, RouterCallback on_result)
   {
+    if (not _rcLookup->RemoteIsAllowed(router))
+    {
+      if (on_result)
+        on_result(router, SessionResult::InvalidRouter);
+      return;
+    }
+
     if (on_result)
     {
       util::Lock l(_mutex);
@@ -91,6 +98,13 @@ namespace llarp
   void
   OutboundSessionMaker::CreateSessionTo(const RouterContact& rc, RouterCallback on_result)
   {
+    if (not _rcLookup->RemoteIsAllowed(rc.pubkey))
+    {
+      if (on_result)
+        on_result(rc.pubkey, SessionResult::InvalidRouter);
+      return;
+    }
+
     if (on_result)
     {
       util::Lock l(_mutex);
@@ -177,6 +191,12 @@ namespace llarp
   void
   OutboundSessionMaker::DoEstablish(const RouterID& router)
   {
+    if (not _rcLookup->RemoteIsAllowed(router))
+    {
+      FinalizeRequest(router, SessionResult::InvalidRouter);
+      return;
+    }
+
     std::unique_lock l{_mutex};
 
     auto itr = pendingSessions.find(router);

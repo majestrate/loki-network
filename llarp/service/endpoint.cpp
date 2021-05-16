@@ -924,7 +924,12 @@ namespace llarp
           paths.insert(path);
       });
 
+#ifdef ANDROID
+      // because android tends to run on underpowered devices we'll relax this paramter a bit
+      constexpr size_t min_unique_lns_endpoints = 2;
+#else
       constexpr size_t min_unique_lns_endpoints = 3;
+#endif
 
       // not enough paths
       if (paths.size() < min_unique_lns_endpoints)

@@ -1,6 +1,7 @@
 local default_deps_base='libsystemd-dev python3-dev libuv1-dev libunbound-dev nettle-dev libssl-dev libevent-dev libsqlite3-dev libcurl4-openssl-dev make';
 local default_deps_nocxx='libsodium-dev ' + default_deps_base; // libsodium-dev needs to be >= 1.0.18
 local default_deps='g++ ' + default_deps_nocxx;
+local docs_deps=default_deps+' python3-sphinx python3-breathe python3-sphinx-rtd-theme python3-pip';
 local default_windows_deps='mingw-w64 zip nsis';
 local docker_base = 'registry.oxen.rocks/lokinet-ci-';
 
@@ -203,6 +204,38 @@ local mac_builder(name,
 };
 
 
+// documentation builder
+local doc_builder(
+  name,
+  image,
+  deps=docs_deps,
+  extra_cmds=[]) = {
+    kind: 'pipeline',
+    name: 'generate docs',
+    type: 'docker',
+    steps: [
+      submodules,
+      {
+        name: name,
+        image: image,
+        environment: { SSH_KEY: { from_secret: "SSH_KEY" } },
+        commands: [
+          'echo "Building on ${DRONE_STAGE_MACHINE}"',
+          'eatmydata ' + apt_get_quiet + ' dist-upgrade -y',
+          'eatmydata ' + apt_get_quiet + ' install -y gdb cmake git pkg-config ccache ' + deps,
+          'eatmydata ' + apt_get_quiet + ' install -y lsb-release',
+          'cp contrib/deb.loki.network.gpg /etc/apt/trusted.gpg.d',
+          'echo deb http://deb.loki.network $$(lsb_release -sc) main >/etc/apt/sources.list.d/loki.network.list',
+          'eatmydata ' + apt_get_quiet + ' update',
+          'pip3 install exhale',
+          'cmake -B build-docs -S .',
+          'VERBOSE=1 make -C build-docs doc',
+          'UPLOAD_OS=apidocs ./contrib/ci/drone-static-upload.sh',
+        ] + extra_cmds,
+      }
+    ]
+  };
+
 [
     {
         name: 'lint check',
@@ -218,6 +251,8 @@ local mac_builder(name,
                 './contrib/ci/drone-format-verify.sh']
         }]
     },
+    // build docs
+    doc_builder("API Docs", docker_base+'debian-sid'),
 
     // Various debian builds
     debian_pipeline("Debian sid (amd64)", "debian:sid"),

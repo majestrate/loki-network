@@ -34,7 +34,12 @@ else
 fi
 
 mkdir -v "$base"
-if [ -e build-windows ]; then
+if [ -e build-docs/docs/html ]; then
+    cp -av build-docs/docs/html "$base"
+    # generate docs tarball af
+    archive="$base.tar.xz"
+    tar cJvf "$archive" "$base"
+elif [ -e build-windows ]; then
     cp -av build-windows/lokinet-*.exe "$base"
     # zipit up yo
     archive="$base.zip"
